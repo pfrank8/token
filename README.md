@@ -1,2 +1,2 @@
 # token
-Wolk Token - Decentralized Data Exchange
+Wolk Protocol Token - Decentralized Data Exchange
