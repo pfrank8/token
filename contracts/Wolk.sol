@@ -1,334 +1,336 @@
 pragma solidity ^0.4.11;
 
-// From FirstBlood
+// SafeMath Taken From FirstBlood
 contract SafeMath {
+    function safeMul(uint a, uint b) internal returns (uint) {
+        uint c = a * b;
+        assert(a == 0 || c / a == b);
+        return c;
+    }
 
-  function safeMul(uint a, uint b) internal returns (uint) {
-    uint c = a * b;
-    assert(a == 0 || c / a == b);
-    return c;
-  }
+    function safeDiv(uint a, uint b) internal returns (uint) {
+        assert(b > 0);
+        uint c = a / b;
+        assert(a == b * c + a % b);
+        return c;
+    }
 
-  function safeDiv(uint a, uint b) internal returns (uint) {
-    assert(b > 0);
-    uint c = a / b;
-    assert(a == b * c + a % b);
-    return c;
-  }
+    function safeSub(uint a, uint b) internal returns (uint) {
+        assert(b <= a);
+        return a - b;
+    }
 
-  function safeSub(uint a, uint b) internal returns (uint) {
-    assert(b <= a);
-    return a - b;
-  }
-
-  function safeAdd(uint a, uint b) internal returns (uint) {
-    uint c = a + b;
-    assert(c>=a && c>=b);
-    return c;
-  }
-
+    function safeAdd(uint a, uint b) internal returns (uint) {
+        uint c = a + b;
+        assert(c>=a && c>=b);
+        return c;
+    }
 }
 
 // ERC20 Interface
 contract ERC20 {
-  function totalSupply() constant returns (uint totalSupply);
-  function balanceOf(address _owner) constant returns (uint balance);
-  function transfer(address _to, uint _value) returns (bool success);
-  function transferFrom(address _from, address _to, uint _value) returns (bool success);
-  function approve(address _spender, uint _value) returns (bool success);
-  function allowance(address _owner, address _spender) constant returns (uint remaining);
-  event Transfer(address indexed _from, address indexed _to, uint _value);
-  event Approval(address indexed _owner, address indexed _spender, uint _value);
+    function totalSupply() constant returns (uint totalSupply);
+    function balanceOf(address _owner) constant returns (uint balance);
+    function transfer(address _to, uint _value) returns (bool success);
+    function transferFrom(address _from, address _to, uint _value) returns (bool success);
+    function approve(address _spender, uint _value) returns (bool success);
+    function allowance(address _owner, address _spender) constant returns (uint remaining);
+    event Transfer(address indexed _from, address indexed _to, uint _value);
+    event Approval(address indexed _owner, address indexed _spender, uint _value);
 }
 
 // ERC20Token
 contract ERC20Token is ERC20, SafeMath {
 
-  mapping(address => uint256) balances;
-  mapping (address => mapping (address => uint256)) allowed;
-  uint256 public totalTokens; 
+    mapping(address => uint256) balances;
+    mapping (address => mapping (address => uint256)) allowed;
+    uint256 public totalTokens = 0; 
 
-  function transfer(address _to, uint256 _value) returns (bool success) {
-    if (balances[msg.sender] >= _value && _value > 0) {
-        balances[msg.sender] = safeSub(balances[msg.sender], _value);
-        balances[_to] = safeAdd(balances[_to], _value);
-        Transfer(msg.sender, _to, _value);
-        return true;
-    } else {
-        return false;
+    function transfer(address _to, uint256 _value) returns (bool success) {
+        if (balances[msg.sender] >= _value && _value > 0) {
+            balances[msg.sender] = safeSub(balances[msg.sender], _value);
+            balances[_to] = safeAdd(balances[_to], _value);
+            Transfer(msg.sender, _to, _value);
+            return true;
+        } else {
+            return false;
+        }
     }
-  }
 
-  function transferFrom(address _from, address _to, uint256 _value) returns (bool success) {
-    var _allowance = allowed[_from][msg.sender];
-    if (balances[_from] >= _value && allowed[_from][msg.sender] >= _value && _value > 0) {
-        balances[_to] = safeAdd(balances[_to], _value);
-        balances[_from] = safeSub(balances[_from], _value);
-        allowed[_from][msg.sender] = safeSub(_allowance, _value);
-        Transfer(_from, _to, _value);
-        return true;
-    } else {
-        return false;
+    function transferFrom(address _from, address _to, uint256 _value) returns (bool success) {
+        var _allowance = allowed[_from][msg.sender];
+        if (balances[_from] >= _value && allowed[_from][msg.sender] >= _value && _value > 0) {
+            balances[_to] = safeAdd(balances[_to], _value);
+            balances[_from] = safeSub(balances[_from], _value);
+            allowed[_from][msg.sender] = safeSub(_allowance, _value);
+            Transfer(_from, _to, _value);
+            return true;
+        } else {
+            return false;
+        }
     }
-  }
 
-  function totalSupply() constant returns (uint256) {
-    return totalTokens;
-  }
+    function totalSupply() constant returns (uint256) {
+        return totalTokens;
+    }
 
-  function balanceOf(address _owner) constant returns (uint256 balance) {
-    return balances[_owner];
-  }
+    function balanceOf(address _owner) constant returns (uint256 balance) {
+        return balances[_owner];
+    }
 
-  function approve(address _spender, uint256 _value) returns (bool success) {
-    allowed[msg.sender][_spender] = _value;
-    Approval(msg.sender, _spender, _value);
-    return true;
-  }
+    function approve(address _spender, uint256 _value) returns (bool success) {
+        allowed[msg.sender][_spender] = _value;
+        Approval(msg.sender, _spender, _value);
+        return true;
+    }
 
-  function allowance(address _owner, address _spender) constant returns (uint256 remaining) {
-    return allowed[_owner][_spender];
-  }
-
+    function allowance(address _owner, address _spender) constant returns (uint256 remaining) {
+        return allowed[_owner][_spender];
+    }
 }
 
 contract Wolk is ERC20Token {
 
-  // TOKEN INFO
-  string  public constant name = "WOLK Protocol Token";
-  string  public constant symbol = "WOLK";
-  uint256 public constant decimals = 18;
+    // TOKEN INFO
+    string  public constant name = "Wolk Protocol Token";
+    string  public constant symbol = "WOLK";
+    uint256 public constant decimals = 18;
 
-  // RESERVE 
-  uint256 public reserveBalance = 0; 
-  uint16  public constant percentageETHReserve = 20;
+    // RESERVE 
+    uint256 public reserveBalance = 0; 
+    uint16  public constant percentageETHReserve = 20;
 
-  // CONTRACT OWNER
-  address public owner = msg.sender;      
-  address public multisigWallet;
-  modifier onlyOwner { assert(msg.sender == owner); _; }
+    // CONTRACT OWNER
+    address public owner = msg.sender;      
+    address public multisigWallet;
+    modifier onlyOwner { assert(msg.sender == owner); _; }
 
+    // TOKEN GENERATION EVENT
+    mapping (address => uint256) contribution;
+    uint256 public constant tokenGenerationMin = 50 * 10**6 * 10**decimals;
+    uint256 public constant tokenGenerationMax = 500 * 10**6 * 10**decimals;
+    uint256 public start_block; 
+    uint256 public end_block;
+    bool    public saleCompleted = false;
+    modifier isTransferable { assert(saleCompleted); _; }
 
-  // TOKEN GENERATION EVENT
-  mapping (address => uint256) contribution;
-  uint256 public constant tokenGenerationMin = 50 * 10**6 * 10**decimals;
-  uint256 public constant tokenGenerationMax = 500 * 10**6 * 10**decimals;
-  uint256 public start_block; 
-  uint256 public end_block;
-  uint256 public end_ts;
-  bool    public saleCompleted = false;
-  modifier isTransferable { assert(saleCompleted); _; }
+    // WOLK SETTLERS
+    mapping (address => bool) settlers;
+    modifier onlySettler { assert(settlers[msg.sender] == true); _; }
 
-  // WOLK SETTLERS
-  mapping (address => bool) settler;
-  modifier canSettle { assert(settler[msg.sender] == true); _; }
+    // TOKEN GENERATION EVENTLOG
+    event WolkCreated(address indexed _to, uint256 _tokenCreated);
+    event WolkDestroyed(address indexed _from, uint256 _tokenDestroyed);
+    event LogRefund(address indexed _to, uint256 _value);
 
-  // TOKEN GENERATION EVENTLOG
-  event WolkCreated(address indexed _to, uint256 _tokenCreated);
-  event WolkDestroyed(address indexed _from, uint256 _tokenDestroyed);
-  event LogRefund(address indexed _to, uint256 _value);
+    // @param _startBlock
+    // @param _endBlock
+    // @param _wolkWallet
+    // @return success
+    // @dev Wolk Genesis Event [only accessible by Contract Owner]
+    function wolkGenesis(uint256 _startBlock, uint256 _endBlock, address _wolkWallet) onlyOwner returns (bool success){
+        require( (totalTokens == 0) && (!settlers[msg.sender]) && (_endBlock > _startBlock) );
+        start_block = _startBlock;
+        end_block = _endBlock;
+        multisigWallet = _wolkWallet;
+        settlers[msg.sender] = true;
+        return true;
+    }
 
-  function WolkGenesis(uint256 _startBlock, uint256 _endBlock, address _wolkWallet) onlyOwner returns (bool success){
-    require( (!settler[msg.sender]) && (_endBlock > _startBlock) );
-    start_block = _startBlock;
-    end_block = _endBlock;
-    multisigWallet = _wolkWallet;
-    settler[msg.sender] = true;
-    return true;
-  }
+    // @param _newOwner
+    // @return success
+    // @dev Transfering Contract Ownership. [only accessible by current Contract Owner]
+    function changeOwner(address _newOwner) onlyOwner returns (bool success){
+        owner = _newOwner;
+        settlers[_newOwner] = true;
+        return true;
+    }
 
-  function changeOwner(address _newOwner) onlyOwner returns (bool success){
-    owner = _newOwner;
-    settler[_newOwner] = true;
-    return true;
-  }
+    // @dev Token Generation Event for Wolk Protocol Token. TGE Participant send Eth into this func in exchange of Wolk Protocol Token
+    function tokenGenerationEvent() payable external {
+        require(!saleCompleted);
+        require( (block.number >= start_block) && (block.number <= end_block) );
+        uint256 tokens = safeMul(msg.value, 1000); //exchange rate
+        uint256 checkedSupply = safeAdd(totalTokens, tokens);
+        require(checkedSupply <= tokenGenerationMax);
+        totalTokens = checkedSupply;
+        balances[msg.sender] = safeAdd(balances[msg.sender], tokens);  
+        contribution[msg.sender] = safeAdd(contribution[msg.sender], msg.value);  
+        WolkCreated(msg.sender, tokens); // logs token creation
+    }
 
-  // @dev TOKEN GENERATION EVENT 
-  function tokenGenerationEvent() payable external {
-    require(!saleCompleted);
-    require( (block.number >= start_block) && (block.number <= end_block) );
-    uint256 tokens = safeMul(msg.value, 1000); //exchange rate
-    uint256 checkedSupply = safeAdd(totalTokens, tokens);
-    require(checkedSupply <= tokenGenerationMax);
-    totalTokens = checkedSupply;
-    balances[msg.sender] = safeAdd(balances[msg.sender], tokens);  
-    contribution[msg.sender] = safeAdd(contribution[msg.sender], msg.value);  
-    WolkCreated(msg.sender, tokens); // logs token creation
-  }
+    // @dev If Token Generation Minimum is Not Met, TGE Participants can call this func and request for refund
+    function refund() external {
+        require( (!saleCompleted) && (totalTokens < tokenGenerationMin) && (block.number > end_block) );
+        uint256 tokenBalance = balances[msg.sender];
+        uint256 refundBalance = contribution[msg.sender];
+        balances[msg.sender] = 0;
+        contribution[msg.sender] = 0;
+        totalTokens = safeSub(totalTokens, tokenBalance);
+        WolkDestroyed(msg.sender, tokenBalance);
+        LogRefund(msg.sender, refundBalance);
+        msg.sender.transfer(refundBalance); 
+    }
 
-  // @dev refund 
-  function refund() external {
-    require( (!saleCompleted) && (totalTokens < tokenGenerationMin) && (block.number < end_block) );
-    uint256 tokenBalance = balances[msg.sender];
-    uint256 refundBalance = contribution[msg.sender];
-    balances[msg.sender] = 0;
-    contribution[msg.sender] = 0;
-    totalTokens = safeSub(totalTokens, tokenBalance);
-    WolkDestroyed(msg.sender, tokenBalance);
-    LogRefund(msg.sender, refundBalance);
-    msg.sender.transfer(refundBalance); 
-  }
-
-  // @dev finalize the tokenGenerationEvent
-  function finalize() onlyOwner {
-    require( (!saleCompleted) && (totalTokens >= tokenGenerationMin) );
-    saleCompleted = true;
-    end_ts = block.timestamp;
-    end_block = block.number;
-    reserveBalance = safeDiv(safeMul(this.balance, percentageETHReserve), 100);
-    var withdrawalBalance = this.balance - reserveBalance;
-    msg.sender.transfer(withdrawalBalance);
-  }
+    // @dev Finalizing the Token Generation Event. 20% of Eth will be kept in contract to provide liquidity
+    function finalize() onlyOwner {
+        require( (!saleCompleted) && (totalTokens >= tokenGenerationMin) );
+        saleCompleted = true;
+        end_block = block.number;
+        reserveBalance = safeDiv(safeMul(this.balance, percentageETHReserve), 100);
+        var withdrawalBalance = this.balance - reserveBalance;
+        msg.sender.transfer(withdrawalBalance);
+    }
 }
 
 contract WolkProtocol is Wolk {
 
-  // WOLK NETWORK PROTOCOL
-  uint256 public maxBurnBasisPoints = 500;  // 5% Max to burn when Service Provider withdraws from data buyer accounts
-  mapping (address => mapping (address => bool)) authorized; // holds which accounts have approved which Service Providers
-  mapping (address => uint256) feeBasisPoints;   // % fee earned by Service Provider when depositing to data seller 
+    // WOLK NETWORK PROTOCOL
+    uint256 public burnBasisPoints = 500;  // Burn rate (in BP) when Service Provider withdraws from data buyers' accounts
+    mapping (address => mapping (address => bool)) authorized; // holds which accounts have approved which Service Providers
+    mapping (address => uint256) feeBasisPoints;   // Fee (in BP) earned by Service Provider when depositing to data seller 
 
-  // WOLK PROTOCOL Events:
-  event AuthorizeServiceProvider(address indexed _owner, address _serviceProvider);
-  event DeauthorizeServiceProvider(address indexed _owner, address _serviceProvider);
-  event SetServiceProviderFee(address indexed _serviceProvider, uint256 _feeBasisPoints);
-  event BurnTokens(address indexed _from, address indexed _serviceProvider, uint256 _value);
+    // WOLK PROTOCOL Events:
+    event AuthorizeServiceProvider(address indexed _owner, address _serviceProvider);
+    event DeauthorizeServiceProvider(address indexed _owner, address _serviceProvider);
+    event SetServiceProviderFee(address indexed _serviceProvider, uint256 _feeBasisPoints);
+    event BurnTokens(address indexed _from, address indexed _serviceProvider, uint256 _value);
 
-  // @param  _burnBasisPoints
-  // @return success
-  // @dev Set setMaxBurnBasisPoints -- only Wolk Foundation can set this, affects Service Provider settleBuyer
-  function setMaxBurnRate(uint256 _maxBurnBasisPoints) onlyOwner returns (bool success) {
-    require( (_maxBurnBasisPoints > 0) && (_maxBurnBasisPoints < 1000) );
-    maxBurnBasisPoints = _maxBurnBasisPoints;
-    return true;
-  }
-
-  // @param  _serviceProvider
-  // @param  _feeBasisPoints
-  // @return success
-  // @dev Set Service Provider fee -- only Contract Owner can do this, affects Service Provider settleSeller
-  function setServiceFee(address _serviceProvider, uint256 _feeBasisPoints) onlyOwner returns (bool success) {
-    if ( _feeBasisPoints <= 0 || _feeBasisPoints > 4000){
-        // revoke Settler privilege
-        settler[_serviceProvider] = false;
-        feeBasisPoints[_serviceProvider] = 0;
-        return false;
-    }else{
-      feeBasisPoints[_serviceProvider] = _feeBasisPoints;
-      settler[_serviceProvider] = true;
-      SetServiceProviderFee(_serviceProvider, _feeBasisPoints);
-      return true;
+    // @param  _burnBasisPoints
+    // @return success
+    // @dev Set BurnRate on Wolk Protocol -- only Wolk Foundation can set this, affects Service Provider settleBuyer
+    function setBurnRate(uint256 _burnBasisPoints) onlyOwner returns (bool success) {
+        require( (_burnBasisPoints > 0) && (_burnBasisPoints <= 1000) );
+        burnBasisPoints = _burnBasisPoints;
+        return true;
     }
-  }
 
-  // @param  _serviceProvider
-  // @return _feeBasisPoints
-  function checkServiceFee(address _serviceProvider) constant returns (uint256 _feeBasisPoints) {
-    return feeBasisPoints[_serviceProvider];
-  }
-
-  // @param  _buyer
-  // @param  _value
-  // @return success
-  // @dev Service Provider Settlement with Buyer: a small percent is burnt (set in setServiceProvider, kept in maxBurnBasisPoints) when funds are transferred from buyer to Service Provider
- function settleBuyer(address _buyer, uint256 _value) canSettle returns (bool success) {
-    require( (maxBurnBasisPoints > 0) && (maxBurnBasisPoints < 1000) && authorized[_buyer][msg.sender] ); // Buyer must authorize Service Provider 
-    if ( balances[_buyer] >= _value && _value > 0) {
-       var burnCap = safeDiv(safeMul(_value, maxBurnBasisPoints), 10000);
-       var transferredToServiceProvider = safeSub(_value, burnCap);
-       balances[_buyer] = safeSub(balances[_buyer], _value);
-       balances[msg.sender] = safeAdd(balances[msg.sender], transferredToServiceProvider);
-       totalTokens = safeSub(totalTokens, burnCap);
-       Transfer(_buyer, msg.sender, transferredToServiceProvider);
-       BurnTokens(_buyer, msg.sender, burnCap);
-       return true;
-    } else {
-       return false;
+    // @param  _serviceProvider
+    // @param  _feeBasisPoints
+    // @return success
+    // @dev Set Service Provider fee -- only Contract Owner can do this, affects Service Provider settleSeller
+    function setServiceFee(address _serviceProvider, uint256 _feeBasisPoints) onlyOwner returns (bool success) {
+        if ( _feeBasisPoints == 0 || _feeBasisPoints > 4000){
+            // revoke Settler privilege
+            settlers[_serviceProvider] = false;
+            feeBasisPoints[_serviceProvider] = 0;
+            return false;
+        }else{
+            feeBasisPoints[_serviceProvider] = _feeBasisPoints;
+            settlers[_serviceProvider] = true;
+            SetServiceProviderFee(_serviceProvider, _feeBasisPoints);
+            return true;
+        }
     }
-  } 
 
-  // @param  _supplier
-  // @param  _value
-  // @return success
-  // @dev Service Provider Settlement with Supplier: a small percent is kept by Service Provider (set in setServiceProvider, stored in feeBasisPoints) when funds are transferred from Service Provider to seller
-  function settleSeller(address _supplier, uint256 _value) canSettle returns (bool success) {
-    // Service Providers have a % fee for Sellers (e.g. 20%)
-    var serviceProviderBP = feeBasisPoints[msg.sender];
-    require( (serviceProviderBP > 0) && (serviceProviderBP < 4000) );
-    if (balances[msg.sender] >= _value && _value > 0) {
-      var fee = safeDiv(safeMul(_value, serviceProviderBP), 10000);
-      var transferredToSupplier = _value - fee;
-      balances[_supplier] = safeAdd(balances[_supplier], transferredToSupplier);
-      Transfer(msg.sender, _supplier, transferredToSupplier);
-      return true;
-    } else {
-      return false;
+    // @param  _serviceProvider
+    // @return _feeBasisPoints
+    // @dev Check service ee (in BP) for a given provider
+    function checkServiceFee(address _serviceProvider) constant returns (uint256 _feeBasisPoints) {
+        return feeBasisPoints[_serviceProvider];
     }
-  }
 
-  // @param _serviceProvider_to_add Grant Service Provider permission to settle spend
-  // @return Whether the authorization was successful or not
-  // @dev Buyer authorizes the Service Provider (to call settleBuyer). For security reason, _serviceProvider needs to be whitelisted by Wolk Foundation first
-  function authorizeProvider(address _providerToAdd) returns (bool success) {
-    require(settler[_providerToAdd]);
-    authorized[msg.sender][_providerToAdd] = true;
-    AuthorizeServiceProvider(msg.sender, _providerToAdd);
-    return true;
-  }
+    // @param  _buyer
+    // @param  _value
+    // @return success
+    // @dev Service Provider Settlement with Buyer: a small percent is burnt (set in setBurnRate, stored in burnBasisPoints) when funds are transferred from buyer to Service Provider [only accessible by settlers]
+    function settleBuyer(address _buyer, uint256 _value) onlySettler returns (bool success) {
+        require( (burnBasisPoints > 0) && (burnBasisPoints <= 1000) && authorized[_buyer][msg.sender] ); // Buyer must authorize Service Provider 
+        if ( balances[_buyer] >= _value && _value > 0) {
+            var burnCap = safeDiv(safeMul(_value, burnBasisPoints), 10000);
+            var transferredToServiceProvider = safeSub(_value, burnCap);
+            balances[_buyer] = safeSub(balances[_buyer], _value);
+            balances[msg.sender] = safeAdd(balances[msg.sender], transferredToServiceProvider);
+            totalTokens = safeSub(totalTokens, burnCap);
+            Transfer(_buyer, msg.sender, transferredToServiceProvider);
+            BurnTokens(_buyer, msg.sender, burnCap);
+            return true;
+        } else {
+            return false;
+        }
+    } 
 
-  // @param _serviceProvider_to_remove  Revoke Service Provider’s permission on settle spend
-  // @return Whether the deauthorization was successful or not
-  // @dev Buyer deauthorizes the Service Provider (from calling settleBuyer)
-  function deauthorizeProvider(address _providerToRemove) returns (bool success) {
-    authorized[msg.sender][_providerToRemove] = false;
-    DeauthorizeServiceProvider(msg.sender, _providerToRemove);
-    return true;
-  }
+    // @param  _seller
+    // @param  _value
+    // @return success
+    // @dev Service Provider Settlement with Seller: a small percent is kept by Service Provider (set in setServiceFee, stored in feeBasisPoints) when funds are transferred from Service Provider to seller [only accessible by settlers]
+    function settleSeller(address _seller, uint256 _value) onlySettler returns (bool success) {
+        // Service Providers have a % fee for Sellers (e.g. 20%)
+        var serviceProviderBP = feeBasisPoints[msg.sender];
+        require( (serviceProviderBP > 0) && (serviceProviderBP <= 4000) );
+        if (balances[msg.sender] >= _value && _value > 0) {
+            var fee = safeDiv(safeMul(_value, serviceProviderBP), 10000);
+            var transferredToSeller = _value - fee;
+            balances[_seller] = safeAdd(balances[_seller], transferredToSeller);
+            Transfer(msg.sender, _seller, transferredToSeller);
+            return true;
+        } else {
+            return false;
+        }
+    }
 
-  // @param _owner
-  // @param _serviceProvider
-  // @return authorizationStatus for platform settlement
-  // @dev Check authorization between account and Service Provider
-  function checkAuthorization(address _owner, address _serviceProvider) constant returns (bool authorizationStatus) {
-    return authorized[_owner][_serviceProvider];
-  }
+    // @param _providerToAdd
+    // @return success
+    // @dev Buyer authorizes the Service Provider (to call settleBuyer). For security reason, _providerToAdd needs to be whitelisted by Wolk Foundation first
+    function authorizeProvider(address _providerToAdd) returns (bool success) {
+        require(settlers[_providerToAdd]);
+        authorized[msg.sender][_providerToAdd] = true;
+        AuthorizeServiceProvider(msg.sender, _providerToAdd);
+        return true;
+    }
 
+    // @param _providerToRemove
+    // @return success
+    // @dev Buyer deauthorizes the Service Provider (from calling settleBuyer)
+    function deauthorizeProvider(address _providerToRemove) returns (bool success) {
+        authorized[msg.sender][_providerToRemove] = false;
+        DeauthorizeServiceProvider(msg.sender, _providerToRemove);
+        return true;
+    }
 
-  // @param _owner
-  // @param _serviceProvider
-  // @return authorizationStatus for platform settlement
-  // @dev Grant authorization between account and Service Provider [only if Contract Owner]
-  // Note: explicit permission from owner should be obtained for this!
-  function grantService(address _owner, address _providerToAdd) onlyOwner returns (bool authorizationStatus) {
-      var isPreauthorized = authorized[_owner][msg.sender];
-      if (isPreauthorized && settler[_providerToAdd] ) {
-          authorized[_owner][_providerToAdd] = true;
-          AuthorizeServiceProvider(msg.sender, _providerToAdd);
-          return true;
-      }else{
-        return false;
-      }
-  }
+    // @param _owner
+    // @param _serviceProvider
+    // @return authorizationStatus
+    // @dev Check authorization between account and Service Provider
+    function checkAuthorization(address _owner, address _serviceProvider) constant returns (bool authorizationStatus) {
+        return authorized[_owner][_serviceProvider];
+    }
 
-  // @param _owner
-  // @param _serviceProvider
-  // @return authorization_status for platform settlement
-  // @dev Revoke authorization between account and Service Provider [only if Contract Owner]
-  function removeService(address _owner, address _providerToRemove) onlyOwner returns (bool authorizationStatus) {
-      authorized[_owner][_providerToRemove] = false;
-      DeauthorizeServiceProvider(_owner, _providerToRemove);
-      return true;
-  }
+    // @param _owner
+    // @param _providerToAdd
+    // @return authorizationStatus
+    // @dev Grant authorization between account and Service Provider on buyers' behalf [only accessible by Contract Owner]
+    // @note Explicit permission from balance owner MUST be obtained beforehand
+    function grantService(address _owner, address _providerToAdd) onlyOwner returns (bool authorizationStatus) {
+        var isPreauthorized = authorized[_owner][msg.sender];
+        if (isPreauthorized && settlers[_providerToAdd] ) {
+            authorized[_owner][_providerToAdd] = true;
+            AuthorizeServiceProvider(msg.sender, _providerToAdd);
+            return true;
+        }else{
+            return false;
+        }
+    }
 
+    // @param _owner
+    // @param _providerToRemove
+    // @return authorization_status
+    // @dev Revoke authorization between account and Service Provider on buyers' behalf [only accessible by Contract Owner]
+    // @note Explicit permission from balance owner are NOT required for disabling ill-intent Service Provider
+    function removeService(address _owner, address _providerToRemove) onlyOwner returns (bool authorizationStatus) {
+        authorized[_owner][_providerToRemove] = false;
+        DeauthorizeServiceProvider(_owner, _providerToRemove);
+        return true;
+    }
 }
 
 contract BancorFormula is SafeMath {
 
-  // Taken from https://github.com/bancorprotocol/contracts/blob/master/solidity/contracts/BancorFormula.sol
-  uint8 constant PRECISION   = 32;  // fractional bits
-  uint256 constant FIXED_ONE = uint256(1) << PRECISION; // 0x100000000
-  uint256 constant FIXED_TWO = uint256(2) << PRECISION; // 0x200000000
-  uint256 constant MAX_VAL   = uint256(1) << (256 - PRECISION); // 0x0000000100000000000000000000000000000000000000000000000000000000
+    // Taken from https://github.com/bancorprotocol/contracts/blob/master/solidity/contracts/BancorFormula.sol
+    uint8 constant PRECISION   = 32;  // fractional bits
+    uint256 constant FIXED_ONE = uint256(1) << PRECISION; // 0x100000000
+    uint256 constant FIXED_TWO = uint256(2) << PRECISION; // 0x200000000
+    uint256 constant MAX_VAL   = uint256(1) << (256 - PRECISION); // 0x0000000100000000000000000000000000000000000000000000000000000000
 
     /**
         @dev given a token supply, reserve, CRR and a deposit amount (in the reserve token), calculates the return for a given change (in the main token)
@@ -629,58 +631,59 @@ contract BancorFormula is SafeMath {
         res += xi * 0x22;
 
         return res / 0xde1bc4d19efcac82445da75b00000000;
-    }
-  
+    }  
 }
 
 contract WolkExchange is WolkProtocol, BancorFormula {
 
-  //Liqudation Cap per transaction
-  uint256 public maxPerExchangeBP = 50;
+    uint256 public maxPerExchangeBP = 50;
 
-  function setMaxPerExchange(uint256 _maxPerExchange) onlyOwner returns (bool success) {
-    require( (_maxPerExchange >= 10) && (_maxPerExchange < 100) );
-    maxPerExchangeBP = _maxPerExchange;
-    return true;
-  }
-
-  // Liqudation Max per transaction
-  function EstLiquidationCap() public constant returns (uint256) {
-    if (saleCompleted){
-        var liquidationMax  = safeDiv(safeMul(totalTokens, maxPerExchangeBP), 10000);
-        if (liquidationMax < 100 * 10**decimals){ 
-            liquidationMax = 100 * 10**decimals;
-        }
-        return liquidationMax;   
-    }else{
-        return 0;
+    // @param  _maxPerExchange
+    // @return success
+    // @dev Set max sell token amount per transaction -- only Wolk Foundation can set this
+    function setMaxPerExchange(uint256 _maxPerExchange) onlyOwner returns (bool success) {
+        require( (_maxPerExchange >= 10) && (_maxPerExchange <= 100) );
+        maxPerExchangeBP = _maxPerExchange;
+        return true;
     }
-  }
 
-  // @param  tokens
-  // @dev send ETH in exchange for WOLK, at an exchange rate based on the Bancor Protocol derivation
-  //  and decrease reserveBalance, totalTokens accordingly
-  function sellWolk(uint256 _wolkAmount) isTransferable() external returns(uint256) {
-    uint256 sellCap = EstLiquidationCap();
-    uint256 ethReceivable = calculateSaleReturn(totalTokens, reserveBalance, percentageETHReserve, _wolkAmount);
-    require( (sellCap >= _wolkAmount) && (balances[msg.sender] >= _wolkAmount) && (this.balance > ethReceivable) );
-    balances[msg.sender] = safeSub(balances[msg.sender], _wolkAmount);
-    totalTokens = safeSub(totalTokens, _wolkAmount);
-    reserveBalance = safeSub(this.balance, ethReceivable);
-    WolkDestroyed(msg.sender, _wolkAmount);
-    msg.sender.transfer(ethReceivable);
-    return ethReceivable;     
-  }
-   
-  // @dev send WOLK in exchange for ETH, at an exchange rate based on the Bancor Protocol derivation
-  //  and increase reserveBalance, totalTokens accordingly
-  function purchaseWolk() isTransferable() payable external returns(uint256){
-    uint256 wolkReceivable = calculatePurchaseReturn(totalTokens, reserveBalance, percentageETHReserve, msg.value);
-    totalTokens = safeAdd(totalTokens, wolkReceivable);
-    balances[msg.sender] = safeAdd(balances[msg.sender], wolkReceivable);
-    reserveBalance = safeAdd(reserveBalance, msg.value);
-    WolkCreated(msg.sender, wolkReceivable); // logs token creation
-    return wolkReceivable;
-  }
+    // @return Estimated Liquidation Cap
+    // @dev Liquidation Cap per transaction is used to ensure proper price discovery for Wolk Exchange 
+    function EstLiquidationCap() public constant returns (uint256) {
+        if (saleCompleted){
+            var liquidationMax  = safeDiv(safeMul(totalTokens, maxPerExchangeBP), 10000);
+            if (liquidationMax < 100 * 10**decimals){ 
+                liquidationMax = 100 * 10**decimals;
+            }
+            return liquidationMax;   
+        }else{
+            return 0;
+        }
+    }
 
+    // @param _wolkAmount
+    // @return ethReceivable
+    // @dev send Wolk into contract in exchange for eth, at an exchange rate based on the Bancor Protocol derivation and decrease totalSupply accordingly
+    function sellWolk(uint256 _wolkAmount) isTransferable() external returns(uint256) {
+        uint256 sellCap = EstLiquidationCap();
+        uint256 ethReceivable = calculateSaleReturn(totalTokens, reserveBalance, percentageETHReserve, _wolkAmount);
+        require( (sellCap >= _wolkAmount) && (balances[msg.sender] >= _wolkAmount) && (this.balance > ethReceivable) );
+        balances[msg.sender] = safeSub(balances[msg.sender], _wolkAmount);
+        totalTokens = safeSub(totalTokens, _wolkAmount);
+        reserveBalance = safeSub(this.balance, ethReceivable);
+        WolkDestroyed(msg.sender, _wolkAmount);
+        msg.sender.transfer(ethReceivable);
+        return ethReceivable;     
+    }
+
+    // @return wolkReceivable    
+    // @dev send eth into contract in exchange for wolk tokens, at an exchange rate based on the Bancor Protocol derivation and increase totalSupply accordingly
+    function purchaseWolk() isTransferable() payable external returns(uint256){
+        uint256 wolkReceivable = calculatePurchaseReturn(totalTokens, reserveBalance, percentageETHReserve, msg.value);
+        totalTokens = safeAdd(totalTokens, wolkReceivable);
+        balances[msg.sender] = safeAdd(balances[msg.sender], wolkReceivable);
+        reserveBalance = safeAdd(reserveBalance, msg.value);
+        WolkCreated(msg.sender, wolkReceivable); // logs token creation
+        return wolkReceivable;
+    }
 }
