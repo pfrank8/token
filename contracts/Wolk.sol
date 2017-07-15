@@ -44,7 +44,7 @@ contract ERC20Token is ERC20, SafeMath {
 
     mapping(address => uint256) balances;
     mapping (address => mapping (address => uint256)) allowed;
-    uint256 public totalTokens = 0; 
+    uint256 public totalTokens; 
 
     function transfer(address _to, uint256 _value) returns (bool success) {
         if (balances[msg.sender] >= _value && _value > 0) {
@@ -96,7 +96,7 @@ contract Wolk is ERC20Token {
     string  public constant symbol = "WOLK";
     uint256 public constant decimals = 18;
 
-    // RESERVE 
+    // RESERVE
     uint256 public reserveBalance = 0; 
     uint16  public constant percentageETHReserve = 20;
 
@@ -129,7 +129,7 @@ contract Wolk is ERC20Token {
     // @return success
     // @dev Wolk Genesis Event [only accessible by Contract Owner]
     function wolkGenesis(uint256 _startBlock, uint256 _endBlock, address _wolkWallet) onlyOwner returns (bool success){
-        require( (totalTokens == 0) && (!settlers[msg.sender]) && (_endBlock > _startBlock) );
+        require( (totalTokens < 1) && (!settlers[msg.sender]) && (_endBlock > _startBlock) );
         start_block = _startBlock;
         end_block = _endBlock;
         multisigWallet = _wolkWallet;
@@ -161,7 +161,7 @@ contract Wolk is ERC20Token {
 
     // @dev If Token Generation Minimum is Not Met, TGE Participants can call this func and request for refund
     function refund() external {
-        require( (!saleCompleted) && (totalTokens < tokenGenerationMin) && (block.number > end_block) );
+        require( (contribution[msg.sender] > 0) && (!saleCompleted) && (totalTokens < tokenGenerationMin) && (block.number > end_block) );
         uint256 tokenBalance = balances[msg.sender];
         uint256 refundBalance = contribution[msg.sender];
         balances[msg.sender] = 0;
@@ -178,7 +178,7 @@ contract Wolk is ERC20Token {
         saleCompleted = true;
         end_block = block.number;
         reserveBalance = safeDiv(safeMul(this.balance, percentageETHReserve), 100);
-        var withdrawalBalance = this.balance - reserveBalance;
+        var withdrawalBalance = safeSub(this.balance, reserveBalance);
         msg.sender.transfer(withdrawalBalance);
     }
 }
@@ -210,7 +210,7 @@ contract WolkProtocol is Wolk {
     // @return success
     // @dev Set Service Provider fee -- only Contract Owner can do this, affects Service Provider settleSeller
     function setServiceFee(address _serviceProvider, uint256 _feeBasisPoints) onlyOwner returns (bool success) {
-        if ( _feeBasisPoints == 0 || _feeBasisPoints > 4000){
+        if ( _feeBasisPoints <= 0 || _feeBasisPoints > 4000){
             // revoke Settler privilege
             settlers[_serviceProvider] = false;
             feeBasisPoints[_serviceProvider] = 0;
@@ -260,7 +260,7 @@ contract WolkProtocol is Wolk {
         require( (serviceProviderBP > 0) && (serviceProviderBP <= 4000) );
         if (balances[msg.sender] >= _value && _value > 0) {
             var fee = safeDiv(safeMul(_value, serviceProviderBP), 10000);
-            var transferredToSeller = _value - fee;
+            var transferredToSeller = safeSub(_value, fee);
             balances[_seller] = safeAdd(balances[_seller], transferredToSeller);
             Transfer(msg.sender, _seller, transferredToSeller);
             return true;
@@ -677,13 +677,46 @@ contract WolkExchange is WolkProtocol, BancorFormula {
     }
 
     // @return wolkReceivable    
-    // @dev send eth into contract in exchange for wolk tokens, at an exchange rate based on the Bancor Protocol derivation and increase totalSupply accordingly
+    // @dev send eth into contract in exchange for Wolk tokens, at an exchange rate based on the Bancor Protocol derivation and increase totalSupply accordingly
     function purchaseWolk() isTransferable() payable external returns(uint256){
         uint256 wolkReceivable = calculatePurchaseReturn(totalTokens, reserveBalance, percentageETHReserve, msg.value);
         totalTokens = safeAdd(totalTokens, wolkReceivable);
         balances[msg.sender] = safeAdd(balances[msg.sender], wolkReceivable);
         reserveBalance = safeAdd(reserveBalance, msg.value);
-        WolkCreated(msg.sender, wolkReceivable); // logs token creation
+        WolkCreated(msg.sender, wolkReceivable);
         return wolkReceivable;
+    }
+
+    // @param _exactWolk
+    // @return ethRefundable
+    // @dev send eth into contract in exchange for exact amount of Wolk tokens with margin of error of no more than 1 Wolk. 
+    // @note Purchase with the insufficient eth will be cancelled and returned; exceeding eth balanance from purchase, if any, will be returned.     
+    function purchaseExactWolk(uint256 _exactWolk) isTransferable() payable external returns(uint256){
+        uint256 wolkReceivable = calculatePurchaseReturn(totalTokens, reserveBalance, percentageETHReserve, msg.value);
+        if (wolkReceivable < _exactWolk){
+            // Cancel Insufficient Purchase
+            revert();
+            return msg.value;
+        }else {
+            var wolkDiff = safeSub(wolkReceivable, _exactWolk);
+            uint256 ethRefundable = 0;
+            // Refund if wolkDiff exceeds 1 Wolk
+            if (wolkDiff < 10**decimals){
+                // Credit Buyer Full amount if within margin of error
+                totalTokens = safeAdd(totalTokens, wolkReceivable);
+                balances[msg.sender] = safeAdd(balances[msg.sender], wolkReceivable);
+                reserveBalance = safeAdd(reserveBalance, msg.value);
+                WolkCreated(msg.sender, wolkReceivable);
+                return 0;     
+            }else{
+                ethRefundable = calculateSaleReturn( safeAdd(totalTokens, wolkReceivable) , safeAdd(reserveBalance, msg.value), percentageETHReserve, wolkDiff);
+                totalTokens = safeAdd(totalTokens, _exactWolk);
+                balances[msg.sender] = safeAdd(balances[msg.sender], _exactWolk);
+                reserveBalance = safeAdd(reserveBalance, safeSub(msg.value, ethRefundable));
+                WolkCreated(msg.sender, _exactWolk);
+                msg.sender.transfer(ethRefundable);
+                return ethRefundable;
+            }
+        }
     }
 }
