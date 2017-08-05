@@ -1,4 +1,4 @@
-pragma solidity ^0.4.13;
+pragma solidity ^0.4.14;
 
 // SafeMath Taken From FirstBlood
 contract SafeMath {
@@ -27,7 +27,7 @@ contract SafeMath {
     }
 }
 
-
+// Ownership
 contract Owned {
 
     address public owner;
@@ -119,15 +119,16 @@ contract Wolk is ERC20Token, Owned {
 
     // TOKEN INFO
     string  public constant name = "Wolk Protocol Token";
-    string  public constant symbol = "Wolk";
+    string  public constant symbol = "WOLK";
     uint256 public constant decimals = 18;
 
     // RESERVE
     uint256 public reserveBalance = 0; 
     uint8  public constant percentageETHReserve = 20;
 
-    // CONTRACT DETAIL
+    // CONTRACT OWNER
     address public multisigWallet;
+
 
     // WOLK SETTLERS
     mapping (address => bool) settlers;
@@ -141,6 +142,7 @@ contract Wolk is ERC20Token, Owned {
     event WolkCreated(address indexed _to, uint256 _tokenCreated);
     event WolkDestroyed(address indexed _from, uint256 _tokenDestroyed);
     event LogRefund(address indexed _to, uint256 _value);
+
 }
 
 contract WolkTGE is Wolk {
@@ -149,11 +151,12 @@ contract WolkTGE is Wolk {
     mapping (address => uint256) contribution;
     mapping (address => uint256) presaleLimit;
     mapping (address => bool) presaleContributor;
-    uint256 public constant tokenGenerationMin = 10**3 * 10**decimals;
+    uint256 public constant tokenGenerationMin = 1 * 10**3 * 10**decimals;
     uint256 public constant tokenGenerationMax = 50 * 10**3 * 10**decimals;
     uint256 public presale_start_block; 
     uint256 public start_block;
     uint256 public end_block;
+
 
     // @param _presaleStartBlock
     // @param _startBlock
@@ -162,7 +165,7 @@ contract WolkTGE is Wolk {
     // @return success
     // @dev Wolk Genesis Event [only accessible by Contract Owner]
     function wolkGenesis(uint256 _presaleStartBlock, uint256 _startBlock, uint256 _endBlock, address _wolkWallet) onlyOwner returns (bool success){
-        require( (totalTokens < 1) && (block.number <= _startBlock) && (_endBlock > _startBlock) && (_startBlock > _presaleStartBlock ) );
+        require((totalTokens < 1) && (block.number <= _startBlock) && (_endBlock > _startBlock) && (_startBlock > _presaleStartBlock));
         presale_start_block = _presaleStartBlock;
         start_block = _startBlock;
         end_block = _endBlock;
@@ -205,7 +208,7 @@ contract WolkTGE is Wolk {
             var isPresale = true;
         }else{
             //open to all
-            require( block.number >= start_block ) ;            
+            require(block.number >= start_block) ;            
         }
 
         uint256 tokens = safeMul(msg.value, 1000); //exchange rate
@@ -223,7 +226,7 @@ contract WolkTGE is Wolk {
 
     // @dev If Token Generation Minimum is Not Met, TGE Participants can call this func and request for refund
     function refund() external {
-        require( (contribution[msg.sender] > 0) && (!saleCompleted) && (totalTokens < tokenGenerationMin) && (block.number > end_block) );
+        require((contribution[msg.sender] > 0) && (!saleCompleted) && (totalTokens < tokenGenerationMin) && (block.number > end_block));
         uint256 tokenBalance = balances[msg.sender];
         uint256 refundBalance = contribution[msg.sender];
         balances[msg.sender] = 0;
@@ -236,7 +239,7 @@ contract WolkTGE is Wolk {
 
     // @dev Finalizing the Token Generation Event. 20% of Eth will be kept in contract to provide liquidity
     function finalize() onlyOwner {
-        require( (!saleCompleted) && (totalTokens >= tokenGenerationMin) );
+        require((!saleCompleted) && (totalTokens >= tokenGenerationMin));
         saleCompleted = true;
         end_block = block.number;
         reserveBalance = safeDiv(safeMul(this.balance, percentageETHReserve), 100);
@@ -246,12 +249,25 @@ contract WolkTGE is Wolk {
 
 }
 
+contract IBurnFormula {
+    function calculateWolkToBurn(uint256 _value) public constant returns (uint256);
+}
+
+contract IFeeFormula {
+    function calculateProviderFee(uint256 _value) public constant returns (uint256);
+}
+
 contract WolkProtocol is Wolk {
 
     // WOLK NETWORK PROTOCOL
+    address public burnFormula;
+    bool    public settlementIsRunning = true;
     uint256 public burnBasisPoints = 500;  // Burn rate (in BP) when Service Provider withdraws from data buyers’ accounts
     mapping (address => mapping (address => bool)) authorized; // holds which accounts have approved which Service Providers
-    mapping (address => uint256) feeBasisPoints;   // Fee (in BP) earned by Service Provider when depositing to data seller 
+    mapping (address => uint256) feeBasisPoints;   // Fee (in BP) earned by Service Provider when depositing to data seller
+    mapping (address => address) feeFormulas;      // Provider's customizable Fee mormula
+    modifier isSettleable { assert(settlementIsRunning); _; }
+
 
     // WOLK PROTOCOL Events:
     event AuthorizeServiceProvider(address indexed _owner, address _serviceProvider);
@@ -261,19 +277,48 @@ contract WolkProtocol is Wolk {
 
     // @param  _burnBasisPoints
     // @return success
-    // @dev Set BurnRate on Wolk Protocol -- only Wolk Foundation can set this, affects Service Provider settleBuyer
+    // @dev Set BurnRate on Wolk Protocol -- only Wolk can set this, affects Service Provider settleBuyer
     function setBurnRate(uint256 _burnBasisPoints) onlyOwner returns (bool success) {
-        require( (_burnBasisPoints > 0) && (_burnBasisPoints <= 1000) );
+        require((_burnBasisPoints > 0) && (_burnBasisPoints <= 1000));
         burnBasisPoints = _burnBasisPoints;
         return true;
     }
+    
+    // @param  _newBurnFormula
+    // @return success
+    // @dev Set the formula to use for burning -- only Wolk  can set this
+    function setBurnFormula(address _newBurnFormula) onlyOwner returns (bool success){
+        uint256 testBurning = EstWolkToBurn(_newBurnFormula, 10 ** 18);
+        require(testBurning > (5 * 10 ** 13));
+        burnFormula = _newBurnFormula;
+        return true;
+    }
+    
+    // @param  _newFeeFormula
+    // @return success
+    // @dev Set the formula to use for settlement -- settler can customize its fee  
+    function setFeeFormula(address _newFeeFormula) onlySettler returns (bool success){
+        uint256 testSettling = EstProviderFee(_newFeeFormula, 10 ** 18);
+        require(testSettling > (5 * 10 ** 13));
+        feeFormulas[msg.sender] = _newFeeFormula;
+        return true;
+    }
+    
+    // @param  _isRunning
+    // @return success
+    // @dev upating settlement status -- only Wolk can set this
+    function updateSettlementStatus(bool _isRunning) onlyOwner returns (bool success){
+        settlementIsRunning = _isRunning;
+        return true;
+    }
+    
 
     // @param  _serviceProvider
     // @param  _feeBasisPoints
     // @return success
     // @dev Set Service Provider fee -- only Contract Owner can do this, affects Service Provider settleSeller
     function setServiceFee(address _serviceProvider, uint256 _feeBasisPoints) onlyOwner returns (bool success) {
-        if ( _feeBasisPoints <= 0 || _feeBasisPoints > 4000){
+        if (_feeBasisPoints <= 0 || _feeBasisPoints > 4000){
             // revoke Settler privilege
             settlers[_serviceProvider] = false;
             feeBasisPoints[_serviceProvider] = 0;
@@ -293,24 +338,61 @@ contract WolkProtocol is Wolk {
         return feeBasisPoints[_serviceProvider];
     }
 
+    // @param _serviceProvider
+    // @return _formulaAddress
+    // @dev Returns the contract address of the Service Provider's fee formula
+    function checkFeeSchedule(address _serviceProvider) constant returns (address _formulaAddress) {
+        return feeFormulas[_serviceProvider];
+    }
+    
+    // @param _value
+    // @return wolkBurnt
+    // @dev Returns estimate of Wolk to burn 
+    function EstWolkToBurn(address _burnFormula, uint256 _value) constant internal returns (uint256){
+        if(_burnFormula != 0x0){
+            uint256 wolkBurnt = IBurnFormula(_burnFormula).calculateWolkToBurn(_value);
+            return wolkBurnt;    
+        }else{
+            return 0; 
+        }
+    }
+    
+    // @param _value
+    // @param _serviceProvider
+    // @return estFee
+    // @dev Returns estimate of Service Provider's fee 
+    function EstProviderFee(address _serviceProvider, uint256 _value) constant internal returns (uint256){
+        address ProviderFeeFormula = feeFormulas[_serviceProvider];
+        if (ProviderFeeFormula != 0x0){
+            uint256 estFee = IFeeFormula(ProviderFeeFormula).calculateProviderFee(_value);
+            return estFee;      
+        }else{
+            return 0;  
+        }
+    }
+    
     // @param  _buyer
     // @param  _value
     // @return success
     // @dev Service Provider Settlement with Buyer: a small percent is burnt (set in setBurnRate, stored in burnBasisPoints) when funds are transferred from buyer to Service Provider [only accessible by settlers]
     function settleBuyer(address _buyer, uint256 _value) onlySettler returns (bool success) {
-        require( (burnBasisPoints > 0) && (burnBasisPoints <= 1000) && authorized[_buyer][msg.sender] ); // Buyer must authorize Service Provider 
-        if ( balances[_buyer] >= _value && _value > 0) {
-            var burnCap = safeDiv(safeMul(_value, burnBasisPoints), 10000);
-            var transferredToServiceProvider = safeSub(_value, burnCap);
-            balances[_buyer] = safeSub(balances[_buyer], _value);
-            balances[msg.sender] = safeAdd(balances[msg.sender], transferredToServiceProvider);
-            totalTokens = safeSub(totalTokens, burnCap);
-            Transfer(_buyer, msg.sender, transferredToServiceProvider);
-            BurnTokens(_buyer, msg.sender, burnCap);
-            return true;
-        } else {
-            return false;
-        }
+        require((burnBasisPoints > 0) && (burnBasisPoints <= 1000) && authorized[_buyer][msg.sender]); // Buyer must authorize Service Provider 
+        require(balances[_buyer] >= _value && _value > 0);
+        var WolkToBurn = EstWolkToBurn(burnFormula, _value);
+        var burnCap = safeDiv(safeMul(_value, burnBasisPoints), 10000); //can not burn more than this
+
+        // If burn formula not found, use default burn rate. If Est to burn exceeds BurnCap, cut back to the cap
+        if (WolkToBurn < 1) WolkToBurn = burnCap;
+        if (WolkToBurn > burnCap) WolkToBurn = burnCap;
+            
+        var transferredToServiceProvider = safeSub(_value, WolkToBurn);
+        balances[_buyer] = safeSub(balances[_buyer], _value);
+        balances[msg.sender] = safeAdd(balances[msg.sender], transferredToServiceProvider);
+        totalTokens = safeSub(totalTokens, WolkToBurn);
+        Transfer(_buyer, msg.sender, transferredToServiceProvider);
+        Transfer(_buyer, 0x00000000000000000000, WolkToBurn);
+        BurnTokens(_buyer, msg.sender, WolkToBurn);
+        return true;
     } 
 
     // @param  _seller
@@ -318,23 +400,25 @@ contract WolkProtocol is Wolk {
     // @return success
     // @dev Service Provider Settlement with Seller: a small percent is kept by Service Provider (set in setServiceFee, stored in feeBasisPoints) when funds are transferred from Service Provider to seller [only accessible by settlers]
     function settleSeller(address _seller, uint256 _value) onlySettler returns (bool success) {
-        // Service Providers have a % fee for Sellers (e.g. 20%)
+        // Service Providers have a % max fee (e.g. 20%)
         var serviceProviderBP = feeBasisPoints[msg.sender];
-        require( (serviceProviderBP > 0) && (serviceProviderBP <= 4000) );
-        if (balances[msg.sender] >= _value && _value > 0) {
-            var fee = safeDiv(safeMul(_value, serviceProviderBP), 10000);
-            var transferredToSeller = safeSub(_value, fee);
-            balances[_seller] = safeAdd(balances[_seller], transferredToSeller);
-            Transfer(msg.sender, _seller, transferredToSeller);
-            return true;
-        } else {
-            return false;
-        }
+        require((serviceProviderBP > 0) && (serviceProviderBP <= 4000) && (_value > 0));
+        var seviceFee = EstProviderFee(msg.sender, _value);
+        var Maximumfee = safeDiv(safeMul(_value, serviceProviderBP), 10000);
+        
+        // If provider's fee formula not set, use default burn rate. If Est fee exceeds Maximumfee, cut back to the fee
+        if (seviceFee < 1) seviceFee = Maximumfee;  
+        if (seviceFee > Maximumfee) seviceFee = Maximumfee;
+        var transferredToSeller = safeSub(_value, seviceFee);
+        require(balances[msg.sender] >= transferredToSeller );
+        balances[_seller] = safeAdd(balances[_seller], transferredToSeller);
+        Transfer(msg.sender, _seller, transferredToSeller);
+        return true;
     }
 
     // @param _providerToAdd
     // @return success
-    // @dev Buyer authorizes the Service Provider (to call settleBuyer). For security reason, _providerToAdd needs to be whitelisted by Wolk Foundation first
+    // @dev Buyer authorizes the Service Provider (to call settleBuyer). For security reason, _providerToAdd needs to be whitelisted by Wolk Inc first
     function authorizeProvider(address _providerToAdd) returns (bool success) {
         require(settlers[_providerToAdd]);
         authorized[msg.sender][_providerToAdd] = true;
@@ -366,7 +450,7 @@ contract WolkProtocol is Wolk {
     // @note Explicit permission from balance owner MUST be obtained beforehand
     function grantService(address _owner, address _providerToAdd) onlyOwner returns (bool authorizationStatus) {
         var isPreauthorized = authorized[_owner][msg.sender];
-        if (isPreauthorized && settlers[_providerToAdd] ) {
+        if (isPreauthorized && settlers[_providerToAdd]) {
             authorized[_owner][_providerToAdd] = true;
             AuthorizeServiceProvider(msg.sender, _providerToAdd);
             return true;
@@ -387,439 +471,47 @@ contract WolkProtocol is Wolk {
     }
 }
 
-
 // Taken from https://github.com/bancorprotocol/contracts/blob/master/solidity/contracts/BancorFormula.sol
-
-contract BancorFormula is SafeMath {
-
-    uint256 constant ONE = 1;
-    uint256 constant TWO = 2;
-    uint256 constant MAX_FIXED_EXP_32 = 0x386bfdba29;
-    string public version = '0.2';
-
-    function BancorFormula() {
-    }
-
-    /**
-        @dev given a token supply, reserve, CRR and a deposit amount (in the reserve token), calculates the return for a given change (in the main token)
-
-        Formula:
-        Return = _supply * ((1 + _depositAmount / _reserveBalance) ^ (_reserveRatio / 100) - 1)
-
-        @param _supply             token total supply
-        @param _reserveBalance     total reserve
-        @param _reserveRatio       constant reserve ratio, 1-100
-        @param _depositAmount      deposit amount, in reserve token
-
-        @return purchase return amount
-    */
-    function calculatePurchaseReturn(uint256 _supply, uint256 _reserveBalance, uint8 _reserveRatio, uint256 _depositAmount) public constant returns (uint256) {
-        // validate input
-        require(_supply != 0 && _reserveBalance != 0 && _reserveRatio > 0 && _reserveRatio <= 100);
-
-        // special case for 0 deposit amount
-        if (_depositAmount == 0)
-            return 0;
-
-        uint256 baseN = safeAdd(_depositAmount, _reserveBalance);
-        uint256 temp;
-
-        // special case if the CRR = 100
-        if (_reserveRatio == 100) {
-            temp = safeMul(_supply, baseN) / _reserveBalance;
-            return safeSub(temp, _supply); 
-        }
-
-        uint8 precision = calculateBestPrecision(baseN, _reserveBalance, _reserveRatio, 100);
-        uint256 resN = power(baseN, _reserveBalance, _reserveRatio, 100, precision);
-        temp = safeMul(_supply, resN) >> precision;
-        return safeSub(temp, _supply);
-     }
-
-    /**
-        @dev given a token supply, reserve, CRR and a sell amount (in the main token), calculates the return for a given change (in the reserve token)
-
-        Formula:
-        Return = _reserveBalance * (1 - (1 - _sellAmount / _supply) ^ (1 / (_reserveRatio / 100)))
-
-        @param _supply             token total supply
-        @param _reserveBalance     total reserve
-        @param _reserveRatio       constant reserve ratio, 1-100
-        @param _sellAmount         sell amount, in the token itself
-
-        @return sale return amount
-    */
-    function calculateSaleReturn(uint256 _supply, uint256 _reserveBalance, uint8 _reserveRatio, uint256 _sellAmount) public constant returns (uint256) {
-        // validate input
-        require(_supply != 0 && _reserveBalance != 0 && _reserveRatio > 0 && _reserveRatio <= 100 && _sellAmount <= _supply);
-
-        // special case for 0 sell amount
-        if (_sellAmount == 0)
-            return 0;
-
-        uint256 baseD = safeSub(_supply, _sellAmount);
-        uint256 temp1;
-        uint256 temp2;
-
-        // special case if the CRR = 100
-        if (_reserveRatio == 100) {
-            temp1 = safeMul(_reserveBalance, _supply);
-            temp2 = safeMul(_reserveBalance, baseD);
-            return safeSub(temp1, temp2) / _supply;
-        }
-
-        // special case for selling the entire supply
-        if (_sellAmount == _supply)
-            return _reserveBalance;
-
-        uint8 precision = calculateBestPrecision(_supply, baseD, 100, _reserveRatio);
-        uint256 resN = power(_supply, baseD, 100, _reserveRatio, precision);
-        temp1 = safeMul(_reserveBalance, resN);
-        temp2 = safeMul(_reserveBalance, ONE << precision);
-        return safeSub(temp1, temp2) / resN;
-    }
-
-    /**
-        calculateBestPrecision 
-        Predicts the highest precision which can be used in order to compute "base^exp" without exceeding 256 bits in any of the intermediate computations.
-        Instead of calculating "base ^ exp", we calculate "e ^ (ln(base) * exp)".
-        The value of ln(base) is represented with an integer slightly smaller than ln(base) * 2 ^ precision.
-        The larger the precision is, the more accurately this value represents the real value.
-        However, function fixedExpUnsafe(x), which calculates e ^ x, is limited to a maximum value of x.
-        The limit depends on the precision (e.g, for precision = 32, the maximum value of x is MAX_FIXED_EXP_32).
-        Hence before calling the 'power' function, we need to estimate an upper-bound for ln(base) * exponent.
-        Of course, we should later assert that the value passed to fixedExpUnsafe is not larger than MAX_FIXED_EXP(precision).
-        Due to this assertion (made in function fixedExp), functions calculateBestPrecision and fixedExp are tightly coupled.
-        Note that the outcome of this function only affects the accuracy of the computation of "base ^ exp".
-        Therefore, there is no need to assert that no intermediate result exceeds 256 bits (nor in this function, neither in any of the functions down the calling tree).
-    */
-    function calculateBestPrecision(uint256 _baseN, uint256 _baseD, uint256 _expN, uint256 _expD) constant returns (uint8) {
-        uint8 precision;
-        uint256 maxExp = MAX_FIXED_EXP_32;
-        uint256 maxVal = _expN * lnUpperBound(_baseN,_baseD);
-        for (precision = 0; precision < 32; precision += 2) {
-            if (maxExp < (maxVal << precision) / _expD)
-                break;
-            maxExp = (maxExp * 0xeb5ec5975959c565) >> (64-2);
-        }
-        if (precision == 0)
-            return 32;
-        return precision+32-2;
-    }
-
-    /**
-        @dev calculates (_baseN / _baseD) ^ (_expN / _expD)
-        Returns result upshifted by precision
-
-        This method is overflow-safe
-    */ 
-    function power(uint256 _baseN, uint256 _baseD, uint256 _expN, uint256 _expD, uint8 _precision) constant returns (uint256) {
-        uint256 logbase = ln(_baseN, _baseD, _precision);
-        // Not using safeDiv here, since safeDiv protects against
-        // precision loss. It's unavoidable, however
-        // Both `ln` and `fixedExp` are overflow-safe. 
-        return fixedExp(safeMul(logbase, _expN) / _expD, _precision);
-    }
-    
-    /**
-        input range: 
-            - numerator: [1, uint256_max >> precision]    
-            - denominator: [1, uint256_max >> precision]
-        output range:
-            [0, 0x9b43d4f8d6]
-
-        This method asserts outside of bounds
-    */
-    function ln(uint256 _numerator, uint256 _denominator, uint8 _precision) public constant returns (uint256) {
-        // denominator > numerator: less than one yields negative values. Unsupported
-        assert(_denominator <= _numerator);
-
-        // log(1) is the lowest we can go
-        assert(_denominator != 0 && _numerator != 0);
-
-        // Upper bits are scaled off by precision
-        uint256 MAX_VAL = ONE << (256 - _precision);
-        assert(_numerator < MAX_VAL);
-        assert(_denominator < MAX_VAL);
-
-        return fixedLoge( (_numerator << _precision) / _denominator, _precision);
-    }
-
-    /**
-        lnUpperBound 
-        Takes a rational number (baseN / baseD) as input.
-        Returns an estimated upper-bound integer of the natural logarithm of the input.
-        We do this by calculating the value of "ceiling(ceiling(log2(base)) * ln(2)))".
-        The expression "floor(log2(base)) >= ceiling(ln(base))" does not hold for all cases of base < 8.
-        We therefore cover these cases (and a few more) manually.
-        Complexity is O(log(input bit-length)).
-    */
-    function lnUpperBound(uint256 _baseN, uint256 _baseD) constant returns (uint256) {
-        assert(_baseN > _baseD);
-
-        uint256 scaledBaseN = _baseN * 100000;
-        if (scaledBaseN <= _baseD *  271828) // _baseN / _baseD < e^1 (floorLog2 will return 0 if _baseN / _baseD < 2)
-            return uint256(1) << 32;
-        if (scaledBaseN <= _baseD *  738905) // _baseN / _baseD < e^2 (floorLog2 will return 1 if _baseN / _baseD < 4)
-            return uint256(2) << 32;
-        if (scaledBaseN <= _baseD * 2008553) // _baseN / _baseD < e^3 (floorLog2 will return 2 if _baseN / _baseD < 8)
-            return uint256(3) << 32;
-
-        return (floorLog2((_baseN - 1) / _baseD) + 1) * 0xb17217f8;
-    }
-
-    /**
-        input range: 
-            [0x100000000, uint256_max]
-        output range:
-            [0, 0x9b43d4f8d6]
-
-        This method asserts outside of bounds
-
-        Since `fixedLog2_min` output range is max `0xdfffffffff` 
-        (40 bits, or 5 bytes), we can use a very large approximation
-        for `ln(2)`. This one is used since it's the max accuracy 
-        of Python `ln(2)`
-
-        0xb17217f7d1cf78 = ln(2) * (1 << 56)
-    */
-    function fixedLoge(uint256 _x, uint8 _precision) constant returns (uint256) {
-        // cannot represent negative numbers (below 1)
-        assert(_x >= ONE << _precision);
-
-        uint256 log2 = fixedLog2(_x, _precision);
-        return (log2 * 0xb17217f7d1cf78) >> 56;
-    }
-
-    /**
-        Returns log2(x >> 32) << 32 [1]
-        So x is assumed to be already upshifted 32 bits, and 
-        the result is also upshifted 32 bits. 
-        
-        [1] The function returns a number which is lower than the 
-        actual value
-
-        input-range : 
-            [0x100000000, uint256_max]
-        output-range: 
-            [0,0xdfffffffff]
-
-        This method asserts outside of bounds
-
-    */
-    function fixedLog2(uint256 _x, uint8 _precision) constant returns (uint256) {
-        uint256 fixedOne = ONE << _precision;
-        uint256 fixedTwo = TWO << _precision;
-
-        // Numbers below 1 are negative. 
-        assert( _x >= fixedOne);
-
-        uint256 hi = 0;
-        while (_x >= fixedTwo) {
-            _x >>= 1;
-            hi += fixedOne;
-        }
-
-        for (uint8 i = 0; i < _precision; ++i) {
-            _x = (_x * _x) / fixedOne;
-            if (_x >= fixedTwo) {
-                _x >>= 1;
-                hi += ONE << (_precision - 1 - i);
-            }
-        }
-
-        return hi;
-    }
-
-    /**
-        floorLog2
-        Takes a natural number (n) as input.
-        Returns the largest integer smaller than or equal to the binary logarithm of the input.
-        Complexity is O(log(input bit-length)).
-    */
-    function floorLog2(uint256 _n) constant returns (uint256) {
-        uint8 t = 0;
-        for (uint8 s = 128; s > 0; s >>= 1) {
-            if (_n >= (ONE << s)) {
-                _n >>= s;
-                t |= s;
-            }
-        }
-
-        return t;
-    }
-
-    /**
-        fixedExp is a 'protected' version of `fixedExpUnsafe`, which asserts instead of overflows.
-        The maximum value which can be passed to fixedExpUnsafe depends on the precision used.
-        The following array maps each precision between 0 and 63 to the maximum value permitted:
-        maxExpArray = {
-            0xc1               ,0x17a              ,0x2e5              ,0x5ab              ,
-            0xb1b              ,0x15bf             ,0x2a0c             ,0x50a2             ,
-            0x9aa2             ,0x1288c            ,0x238b2            ,0x4429a            ,
-            0x82b78            ,0xfaadc            ,0x1e0bb8           ,0x399e96           ,
-            0x6e7f88           ,0xd3e7a3           ,0x1965fea          ,0x30b5057          ,
-            0x5d681f3          ,0xb320d03          ,0x15784a40         ,0x292c5bdd         ,
-            0x4ef57b9b         ,0x976bd995         ,0x122624e32        ,0x22ce03cd5        ,
-            0x42beef808        ,0x7ffffffff        ,0xf577eded5        ,0x1d6bd8b2eb       ,
-            0x386bfdba29       ,0x6c3390ecc8       ,0xcf8014760f       ,0x18ded91f0e7      ,
-            0x2fb1d8fe082      ,0x5b771955b36      ,0xaf67a93bb50      ,0x15060c256cb2     ,
-            0x285145f31ae5     ,0x4d5156639708     ,0x944620b0e70e     ,0x11c592761c666    ,
-            0x2214d10d014ea    ,0x415bc6d6fb7dd    ,0x7d56e76777fc5    ,0xf05dc6b27edad    ,
-            0x1ccf4b44bb4820   ,0x373fc456c53bb7   ,0x69f3d1c921891c   ,0xcb2ff529eb71e4   ,
-            0x185a82b87b72e95  ,0x2eb40f9f620fda6  ,0x5990681d961a1ea  ,0xabc25204e02828d  ,
-            0x14962dee9dc97640 ,0x277abdcdab07d5a7 ,0x4bb5ecca963d54ab ,0x9131271922eaa606 ,
-            0x116701e6ab0cd188d,0x215f77c045fbe8856,0x3ffffffffffffffff,0x7abbf6f6abb9d087f,
-        };
-        Since we cannot use an array of constants, we need to approximate the maximum value dynamically.
-        For a precision of 32, the maximum value permitted is MAX_FIXED_EXP_32.
-        For each additional precision unit, the maximum value permitted increases by approximately 1.9.
-        So in order to calculate it, we need to multiply MAX_FIXED_EXP_32 by 1.9 for every additional precision unit.
-        And in order to optimize for speed, we multiply MAX_FIXED_EXP_32 by 1.9^2 for every 2 additional precision units.
-        Hence the general function for mapping a given precision to the maximum value permitted is:
-        - precision = [32, 34, 36, ..., 62]
-        - MaxFixedExp(precision) = MAX_FIXED_EXP_32 * 3.61 ^ (precision / 2 - 16)
-        Since we cannot use non-integers, we do MAX_FIXED_EXP_32 * 361 ^ (precision / 2 - 16) / 100 ^ (precision / 2 - 16).
-        But there is a better approximation, because this "1.9" factor in fact extends beyond a single decimal digit.
-        So instead, we use 0xeb5ec5975959c565 / 0x4000000000000000, which yields maximum values quite close to real ones:
-        maxExpArray = {
-            -------------------,-------------------,-------------------,-------------------,
-            -------------------,-------------------,-------------------,-------------------,
-            -------------------,-------------------,-------------------,-------------------,
-            -------------------,-------------------,-------------------,-------------------,
-            -------------------,-------------------,-------------------,-------------------,
-            -------------------,-------------------,-------------------,-------------------,
-            -------------------,-------------------,-------------------,-------------------,
-            -------------------,-------------------,-------------------,-------------------,
-            0x386bfdba29       ,-------------------,0xcf8014760e       ,-------------------,
-            0x2fb1d8fe07b      ,-------------------,0xaf67a93bb37      ,-------------------,
-            0x285145f31a8f     ,-------------------,0x944620b0e5ee     ,-------------------,
-            0x2214d10d0112e    ,-------------------,0x7d56e7677738e    ,-------------------,
-            0x1ccf4b44bb20d0   ,-------------------,0x69f3d1c9210d27   ,-------------------,
-            0x185a82b87b5b294  ,-------------------,0x5990681d95d4371  ,-------------------,
-            0x14962dee9dbd672b ,-------------------,0x4bb5ecca961fb9bf ,-------------------,
-            0x116701e6ab0967080,-------------------,0x3fffffffffffe6652,-------------------,
-        };
-    */
-    function fixedExp(uint256 _x, uint8 _precision) constant returns (uint256) {
-        uint256 maxExp = MAX_FIXED_EXP_32;
-        for (uint8 p = 32; p < _precision; p += 2)
-            maxExp = (maxExp * 0xeb5ec5975959c565) >> (64-2);
-        
-        assert(_x <= maxExp);
-        return fixedExpUnsafe(_x, _precision);
-    }
-
-    /**
-        fixedExp 
-        Calculates e ^ x according to maclauren summation:
-
-        e^x = 1 + x + x ^ 2 / 2!...+ x ^ n / n!
-
-        and returns e ^ (x >> 32) << 32, that is, upshifted for accuracy
-
-        Input range:
-            - Function ok at    <= 242329958953 
-            - Function fails at >= 242329958954
-
-        This method is is visible for testcases, but not meant for direct use. 
- 
-        The values in this method been generated via the following python snippet: 
-
-        def calculateFactorials():
-            """Method to print out the factorials for fixedExp"""
-
-            ni = []
-            ni.append(295232799039604140847618609643520000000) # 34!
-            ITERATIONS = 34
-            for n in range(1, ITERATIONS, 1) :
-                ni.append(math.floor(ni[n - 1] / n))
-            print( "\n        ".join(["xi = (xi * _x) >> _precision;\n        res += xi * %s;" % hex(int(x)) for x in ni]))
-
-    */
-    function fixedExpUnsafe(uint256 _x, uint8 _precision) constant returns (uint256) {
-        uint256 xi = _x;
-        uint256 res = uint256(0xde1bc4d19efcac82445da75b00000000) << _precision;
-
-        res += xi * 0xde1bc4d19efcac82445da75b00000000;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x6f0de268cf7e5641222ed3ad80000000;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x2504a0cd9a7f7215b60f9be480000000;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x9412833669fdc856d83e6f920000000;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x1d9d4d714865f4de2b3fafea0000000;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x4ef8ce836bba8cfb1dff2a70000000;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0xb481d807d1aa66d04490610000000;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x16903b00fa354cda08920c2000000;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x281cdaac677b334ab9e732000000;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x402e2aad725eb8778fd85000000;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x5d5a6c9f31fe2396a2af000000;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x7c7890d442a82f73839400000;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x9931ed54034526b58e400000;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0xaf147cf24ce150cf7e00000;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0xbac08546b867cdaa200000;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0xbac08546b867cdaa20000;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0xafc441338061b2820000;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x9c3cabbc0056d790000;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x839168328705c30000;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x694120286c049c000;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x50319e98b3d2c000;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x3a52a1e36b82000;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x289286e0fce000;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x1b0c59eb53400;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x114f95b55400;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0xaa7210d200;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x650139600;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x39b78e80;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x1fd8080;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x10fbc0;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x8c40;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x462;
-        xi = (xi * _x) >> _precision;
-        res += xi * 0x22;
-
-        return res / 0xde1bc4d19efcac82445da75b00000000;
-    }
+contract IBancorFormula {
+    function calculatePurchaseReturn(uint256 _supply, uint256 _reserveBalance, uint8 _reserveRatio, uint256 _depositAmount) public constant returns (uint256);
+    function calculateSaleReturn(uint256 _supply, uint256 _reserveBalance, uint8 _reserveRatio, uint256 _sellAmount) public constant returns (uint256);
 }
 
-contract WolkExchange is WolkProtocol, WolkTGE, BancorFormula {
+contract WolkExchange is WolkProtocol, WolkTGE {
 
     uint256 public maxPerExchangeBP = 50;
-
+    address public exchangeFormula;
+    bool    public exchangeIsRunning = false;
+    modifier isExchangable { assert(exchangeIsRunning && saleCompleted); _; }
+    
+    // @param  _newExchangeformula
+    // @return success
+    // @dev Set the bancor formula to use -- only Wolk Inc can set this
+    function setExchangeFormula(address _newExchangeformula) onlyOwner returns (bool success){
+        require(sellWolkEstimate(10**decimals, _newExchangeformula) > 0);
+        require(purchaseWolkEstimate(10**decimals, _newExchangeformula) > 0);
+        exchangeIsRunning = false;
+        exchangeFormula = _newExchangeformula;
+        return true;
+    }
+    
+    // @param  _isRunning
+    // @return success
+    // @dev upating exchange status -- only Wolk Inc can set this
+    function updateExchangeStatus(bool _isRunning) onlyOwner returns (bool success){
+        if (_isRunning){
+            require(sellWolkEstimate(10**decimals, exchangeFormula) > 0);
+            require(purchaseWolkEstimate(10**decimals, exchangeFormula) > 0);   
+        }
+        exchangeIsRunning = _isRunning;
+        return true;
+    }
+    
     // @param  _maxPerExchange
     // @return success
-    // @dev Set max sell token amount per transaction -- only Wolk Foundation can set this
+    // @dev Set max sell token amount per transaction -- only Wolk Inc can set this
     function setMaxPerExchange(uint256 _maxPerExchange) onlyOwner returns (bool success) {
-        require( (_maxPerExchange >= 10) && (_maxPerExchange <= 100) );
+        require((_maxPerExchange >= 10) && (_maxPerExchange <= 100));
         maxPerExchangeBP = _maxPerExchange;
         return true;
     }
@@ -838,14 +530,26 @@ contract WolkExchange is WolkProtocol, WolkTGE, BancorFormula {
         }
     }
 
+    function sellWolkEstimate(uint256 _wolkAmountest, address _formula) internal returns(uint256) {
+        uint256 ethReceivable =  IBancorFormula(_formula).calculateSaleReturn(totalTokens, reserveBalance, percentageETHReserve, _wolkAmountest);
+        return ethReceivable;
+    }
+    
+    function purchaseWolkEstimate(uint256 _ethAmountest, address _formula) internal returns(uint256) {
+        uint256 wolkReceivable = IBancorFormula(_formula).calculatePurchaseReturn(totalTokens, reserveBalance, percentageETHReserve, _ethAmountest);
+        return wolkReceivable;
+    }
+    
     // @param _wolkAmount
     // @return ethReceivable
     // @dev send Wolk into contract in exchange for eth, at an exchange rate based on the Bancor Protocol derivation and decrease totalSupply accordingly
-    function sellWolk(uint256 _wolkAmount) isTransferable() external returns(uint256) {
+    function sellWolk(uint256 _wolkAmount) isExchangable() returns(uint256) {
         uint256 sellCap = EstLiquidationCap();
-        uint256 ethReceivable = calculateSaleReturn(totalTokens, reserveBalance, percentageETHReserve, _wolkAmount);
-        require( (sellCap >= _wolkAmount) && (balances[msg.sender] >= _wolkAmount) && (this.balance > ethReceivable) );
+        require((balances[msg.sender] >= _wolkAmount));
+        require(sellCap >= _wolkAmount);
         balances[msg.sender] = safeSub(balances[msg.sender], _wolkAmount);
+        uint256 ethReceivable = sellWolkEstimate(_wolkAmount,exchangeFormula);
+        require(this.balance > ethReceivable);
         totalTokens = safeSub(totalTokens, _wolkAmount);
         reserveBalance = safeSub(this.balance, ethReceivable);
         WolkDestroyed(msg.sender, _wolkAmount);
@@ -856,22 +560,25 @@ contract WolkExchange is WolkProtocol, WolkTGE, BancorFormula {
 
     // @return wolkReceivable    
     // @dev send eth into contract in exchange for Wolk tokens, at an exchange rate based on the Bancor Protocol derivation and increase totalSupply accordingly
-    function purchaseWolk(address _buyer) isTransferable() payable external returns(uint256){
+    function purchaseWolk(address _buyer) isExchangable() payable returns(uint256){
         require(msg.value > 0);
-        uint256 wolkReceivable = calculatePurchaseReturn(totalTokens, reserveBalance, percentageETHReserve, msg.value);
+        uint256 wolkReceivable = purchaseWolkEstimate(msg.value, exchangeFormula);
+        require(wolkReceivable > 0);
         totalTokens = safeAdd(totalTokens, wolkReceivable);
         balances[_buyer] = safeAdd(balances[_buyer], wolkReceivable);
         reserveBalance = safeAdd(reserveBalance, msg.value);
         WolkCreated(_buyer, wolkReceivable);
-        Transfer(address(this), _buyer, wolkReceivable);
+        Transfer(address(this),_buyer,wolkReceivable);
         return wolkReceivable;
     }
 
+    // @dev  fallback function for purchase
+    // @note Automatically fallback to tokenGenerationEvent before sale is completed. After the event, A 6000 blocks buffer is enforced. Then fallback to purchaseWolk  
     function () payable {
         require(msg.value > 0);
         if(!saleCompleted){
             this.tokenGenerationEvent.value(msg.value)(msg.sender);
-        }else if ( block.number >= (end_block + 6000)){
+        }else if (block.number >= (end_block + 60)){
             this.purchaseWolk.value(msg.value)(msg.sender);
         }else{
             revert();
