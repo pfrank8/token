@@ -124,7 +124,7 @@ contract Wolk is ERC20Token, Owned {
 
     // RESERVE
     uint256 public reserveBalance = 0; 
-    uint8  public constant percentageETHReserve = 20;
+    uint8  public constant percentageETHReserve = 15;
 
     // CONTRACT OWNER
     address public multisigWallet;
@@ -578,7 +578,7 @@ contract WolkExchange is WolkProtocol, WolkTGE {
         require(msg.value > 0);
         if(!saleCompleted){
             this.tokenGenerationEvent.value(msg.value)(msg.sender);
-        }else if (block.number >= (end_block + 60)){
+        }else if (block.number >= (end_block + 6000)){
             this.purchaseWolk.value(msg.value)(msg.sender);
         }else{
             revert();
