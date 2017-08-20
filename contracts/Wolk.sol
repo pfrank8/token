@@ -129,12 +129,11 @@ contract Wolk is ERC20Token, Owned {
     // CONTRACT OWNER
     address public multisigWallet;
 
-
     // WOLK SETTLERS
     mapping (address => bool) settlers;
     modifier onlySettler { assert(settlers[msg.sender] == true); _; }
 
-    // TOKEN GENERATIO CONTROL
+    // TOKEN GENERATION CONTROL
     bool    public saleCompleted = false;
     modifier isTransferable { assert(saleCompleted); _; }
 
