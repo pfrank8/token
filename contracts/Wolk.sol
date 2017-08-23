@@ -1,4 +1,4 @@
-pragma solidity ^0.4.14;
+pragma solidity ^0.4.15;
 
 // SafeMath Taken From FirstBlood
 contract SafeMath {
@@ -134,15 +134,17 @@ contract Wolk is ERC20Token, Owned {
     mapping (address => bool) settlers;
     modifier onlySettler { assert(settlers[msg.sender] == true); _; }
 
-    // TOKEN GENERATIO CONTROL
-    bool    public saleCompleted = false;
-    modifier isTransferable { assert(saleCompleted); _; }
+    // TOKEN GENERATION CONTROL
+    address public wolkSale;
+    bool    public allSaleCompleted = false;
+    bool    public openSaleCompleted = false;
+    modifier isTransferable { assert(allSaleCompleted); _; }
+    modifier onlyWolk { assert(msg.sender == wolkSale); _; }
 
     // TOKEN GENERATION EVENTLOG
     event WolkCreated(address indexed _to, uint256 _tokenCreated);
     event WolkDestroyed(address indexed _from, uint256 _tokenDestroyed);
     event LogRefund(address indexed _to, uint256 _value);
-
 }
 
 contract WolkTGE is Wolk {
@@ -157,19 +159,20 @@ contract WolkTGE is Wolk {
     uint256 public start_block;
     uint256 public end_block;
 
-
     // @param _presaleStartBlock
     // @param _startBlock
     // @param _endBlock
     // @param _wolkWallet
+    // @param _wolkSale
     // @return success
     // @dev Wolk Genesis Event [only accessible by Contract Owner]
-    function wolkGenesis(uint256 _presaleStartBlock, uint256 _startBlock, uint256 _endBlock, address _wolkWallet) onlyOwner returns (bool success){
+    function wolkGenesis(uint256 _presaleStartBlock, uint256 _startBlock, uint256 _endBlock, address _wolkWallet, address _wolkSale) onlyOwner returns (bool success){
         require((totalTokens < 1) && (block.number <= _startBlock) && (_endBlock > _startBlock) && (_startBlock > _presaleStartBlock));
         presale_start_block = _presaleStartBlock;
         start_block = _startBlock;
         end_block = _endBlock;
         multisigWallet = _wolkWallet;
+        wolkSale = _wolkSale;
         settlers[msg.sender] = true;
         return true;
     }
@@ -200,7 +203,7 @@ contract WolkTGE is Wolk {
     // @dev Token Generation Event for Wolk Protocol Token. TGE Participant send Eth into this func in exchange of Wolk Protocol Token
     function tokenGenerationEvent(address _participant) payable external {
 
-        require(!saleCompleted && (block.number <= end_block) && msg.value > 0);
+        require(!openSaleCompleted && !allSaleCompleted && (block.number <= end_block) && msg.value > 0);
         
         if (presaleContributor[_participant] && (block.number < start_block) && (block.number >= presale_start_block)) {
             //restricted to early participants. Min of 2 eth required
@@ -226,7 +229,7 @@ contract WolkTGE is Wolk {
 
     // @dev If Token Generation Minimum is Not Met, TGE Participants can call this func and request for refund
     function refund() external {
-        require((contribution[msg.sender] > 0) && (!saleCompleted) && (totalTokens < tokenGenerationMin) && (block.number > end_block));
+        require((contribution[msg.sender] > 0) && (!allSaleCompleted) && (totalTokens < tokenGenerationMin) && (block.number > end_block));
         uint256 tokenBalance = balances[msg.sender];
         uint256 refundBalance = contribution[msg.sender];
         balances[msg.sender] = 0;
@@ -237,16 +240,28 @@ contract WolkTGE is Wolk {
         msg.sender.transfer(refundBalance); 
     }
 
-    // @dev Finalizing the Token Generation Event. 20% of Eth will be kept in contract to provide liquidity
-    function finalize() onlyOwner {
-        require((!saleCompleted) && (totalTokens >= tokenGenerationMin));
-        saleCompleted = true;
+    // @dev Finalizing the Open-Sale for Token Generation Event. 15% of Eth will be kept in contract to provide liquidity
+    function finalizeOpenSale() onlyOwner {
+        require((!openSaleCompleted) && (totalTokens >= tokenGenerationMin));
+        openSaleCompleted = true;
         end_block = block.number;
         reserveBalance = safeDiv(safeMul(this.balance, percentageETHReserve), 100);
         var withdrawalBalance = safeSub(this.balance, reserveBalance);
         msg.sender.transfer(withdrawalBalance);
     }
 
+    // @dev Finalizing the Private-Sale. Entire Eth will be kept in contract to provide liquidity. This func will conclude the entire sale.
+    function finalize() onlyWolk payable external {
+        require((openSaleCompleted) && (!allSaleCompleted));                                                                                                    
+        uint256 privateSaleTokens = safeMul(safeDiv(safeMul(msg.value, percentageETHReserve), 100), 1000);                                                                           
+        uint256 checkedSupply = safeAdd(totalTokens, privateSaleTokens);                                                                                                
+        totalTokens = checkedSupply;                                                                                                                         
+        reserveBalance = safeAdd(reserveBalance, msg.value);                                                                                                 
+        Transfer(address(this), wolkSale, privateSaleTokens);                                                                                                              
+        balances[wolkSale] = safeAdd(balances[wolkSale], privateSaleTokens);                                                                                                  
+        WolkCreated(wolkSale, privateSaleTokens); // logs token creation for Presale events                                                                                                 
+        allSaleCompleted = true;                                                                                                                                
+    }
 }
 
 contract IBurnFormula {
@@ -262,7 +277,7 @@ contract WolkProtocol is Wolk {
     // WOLK NETWORK PROTOCOL
     address public burnFormula;
     bool    public settlementIsRunning = true;
-    uint256 public burnBasisPoints = 500;  // Burn rate (in BP) when Service Provider withdraws from data buyers’ accounts
+    uint256 public burnBasisPoints = 500;  // Burn rate (in BP) when Service Provider withdraws from data buyers' accounts
     mapping (address => mapping (address => bool)) authorized; // holds which accounts have approved which Service Providers
     mapping (address => uint256) feeBasisPoints;   // Fee (in BP) earned by Service Provider when depositing to data seller
     mapping (address => address) feeFormulas;      // Provider's customizable Fee mormula
@@ -312,7 +327,6 @@ contract WolkProtocol is Wolk {
         return true;
     }
     
-
     // @param  _serviceProvider
     // @param  _feeBasisPoints
     // @return success
@@ -446,7 +460,7 @@ contract WolkProtocol is Wolk {
     // @param _owner
     // @param _providerToAdd
     // @return authorizationStatus
-    // @dev Grant authorization between account and Service Provider on buyers’ behalf [only accessible by Contract Owner]
+    // @dev Grant authorization between account and Service Provider on buyers' behalf [only accessible by Contract Owner]
     // @note Explicit permission from balance owner MUST be obtained beforehand
     function grantService(address _owner, address _providerToAdd) onlyOwner returns (bool authorizationStatus) {
         var isPreauthorized = authorized[_owner][msg.sender];
@@ -462,7 +476,7 @@ contract WolkProtocol is Wolk {
     // @param _owner
     // @param _providerToRemove
     // @return authorization_status
-    // @dev Revoke authorization between account and Service Provider on buyers’ behalf [only accessible by Contract Owner]
+    // @dev Revoke authorization between account and Service Provider on buyers' behalf [only accessible by Contract Owner]
     // @note Explicit permission from balance owner are NOT required for disabling ill-intent Service Provider
     function removeService(address _owner, address _providerToRemove) onlyOwner returns (bool authorizationStatus) {
         authorized[_owner][_providerToRemove] = false;
@@ -482,7 +496,7 @@ contract WolkExchange is WolkProtocol, WolkTGE {
     uint256 public maxPerExchangeBP = 50;
     address public exchangeFormula;
     bool    public exchangeIsRunning = false;
-    modifier isExchangable { assert(exchangeIsRunning && saleCompleted); _; }
+    modifier isExchangable { assert(exchangeIsRunning && allSaleCompleted); _; }
     
     // @param  _newExchangeformula
     // @return success
@@ -519,7 +533,7 @@ contract WolkExchange is WolkProtocol, WolkTGE {
     // @return Estimated Liquidation Cap
     // @dev Liquidation Cap per transaction is used to ensure proper price discovery for Wolk Exchange 
     function EstLiquidationCap() public constant returns (uint256) {
-        if (saleCompleted){
+        if (openSaleCompleted){
             var liquidationMax  = safeDiv(safeMul(totalTokens, maxPerExchangeBP), 10000);
             if (liquidationMax < 100 * 10**decimals){ 
                 liquidationMax = 100 * 10**decimals;
@@ -576,7 +590,7 @@ contract WolkExchange is WolkProtocol, WolkTGE {
     // @note Automatically fallback to tokenGenerationEvent before sale is completed. After the event, A 6000 blocks buffer is enforced. Then fallback to purchaseWolk  
     function () payable {
         require(msg.value > 0);
-        if(!saleCompleted){
+        if(!openSaleCompleted){
             this.tokenGenerationEvent.value(msg.value)(msg.sender);
         }else if (block.number >= (end_block + 6000)){
             this.purchaseWolk.value(msg.value)(msg.sender);
