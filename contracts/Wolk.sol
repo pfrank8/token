@@ -154,7 +154,7 @@ contract WolkTGE is Wolk {
     mapping (address => uint256) presaleLimit;
     mapping (address => bool) presaleContributor;
     uint256 public constant tokenGenerationMin = 50 * 10**6 * 10**decimals;
-    uint256 public constant tokenGenerationMax = 500 * 10**6 * 10**decimals;
+    uint256 public constant tokenGenerationMax = 400 * 10**6 * 10**decimals;
     uint256 public presale_start_block; 
     uint256 public start_block;
     uint256 public end_block;
