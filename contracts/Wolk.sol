@@ -253,7 +253,7 @@ contract WolkTGE is Wolk {
     // @dev Finalizing the Private-Sale. Entire Eth will be kept in contract to provide liquidity. This func will conclude the entire sale.
     function finalize() onlyWolk payable external {
         require((openSaleCompleted) && (!allSaleCompleted));                                                                                                    
-        uint256 privateSaleTokens = safeMul(safeDiv(safeMul(msg.value, percentageETHReserve), 100), 1000);                                                                           
+        uint256 privateSaleTokens =  safeMul(safeDiv(msg.value, percentageETHReserve), 100000);
         uint256 checkedSupply = safeAdd(totalTokens, privateSaleTokens);                                                                                                
         totalTokens = checkedSupply;                                                                                                                         
         reserveBalance = safeAdd(reserveBalance, msg.value);                                                                                                 
@@ -347,7 +347,7 @@ contract WolkProtocol is Wolk {
 
     // @param  _serviceProvider
     // @return _feeBasisPoints
-    // @dev Check service ee (in BP) for a given provider
+    // @dev Check service Fee (in BP) for a given provider
     function checkServiceFee(address _serviceProvider) constant returns (uint256 _feeBasisPoints) {
         return feeBasisPoints[_serviceProvider];
     }
@@ -389,7 +389,7 @@ contract WolkProtocol is Wolk {
     // @param  _value
     // @return success
     // @dev Service Provider Settlement with Buyer: a small percent is burnt (set in setBurnRate, stored in burnBasisPoints) when funds are transferred from buyer to Service Provider [only accessible by settlers]
-    function settleBuyer(address _buyer, uint256 _value) onlySettler returns (bool success) {
+    function settleBuyer(address _buyer, uint256 _value) onlySettler isSettleable returns (bool success) {
         require((burnBasisPoints > 0) && (burnBasisPoints <= 1000) && authorized[_buyer][msg.sender]); // Buyer must authorize Service Provider 
         require(balances[_buyer] >= _value && _value > 0);
         var WolkToBurn = EstWolkToBurn(burnFormula, _value);
@@ -413,7 +413,7 @@ contract WolkProtocol is Wolk {
     // @param  _value
     // @return success
     // @dev Service Provider Settlement with Seller: a small percent is kept by Service Provider (set in setServiceFee, stored in feeBasisPoints) when funds are transferred from Service Provider to seller [only accessible by settlers]
-    function settleSeller(address _seller, uint256 _value) onlySettler returns (bool success) {
+    function settleSeller(address _seller, uint256 _value) onlySettler isSettleable returns (bool success) {
         // Service Providers have a % max fee (e.g. 20%)
         var serviceProviderBP = feeBasisPoints[msg.sender];
         require((serviceProviderBP > 0) && (serviceProviderBP <= 4000) && (_value > 0));
