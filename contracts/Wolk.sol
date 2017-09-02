@@ -594,9 +594,9 @@ contract WolkExchange is WolkProtocol, WolkTGE {
         uint256 sellCap = estLiquidationCap();
         require((balances[msg.sender] >= _wolkAmount));
         require(sellCap >= _wolkAmount);
-        balances[msg.sender] = safeSub(balances[msg.sender], _wolkAmount);
         uint256 ethReceivable = sellWolkEstimate(_wolkAmount,exchangeFormula);
         require(this.balance > ethReceivable);
+        balances[msg.sender] = safeSub(balances[msg.sender], _wolkAmount);
         totalTokens = safeSub(totalTokens, _wolkAmount);
         reserveBalance = safeSub(this.balance, ethReceivable);
         WolkDestroyed(msg.sender, _wolkAmount);
