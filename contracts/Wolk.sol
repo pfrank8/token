@@ -1,4 +1,4 @@
-pragma solidity ^0.4.15;
+pragma solidity ^0.4.16;
 
 // SafeMath Taken From FirstBlood
 contract SafeMath {
@@ -105,6 +105,7 @@ contract ERC20Token is ERC20, SafeMath {
     }
 
     function approve(address _spender, uint256 _value) returns (bool success) {
+        require((_value == 0) || (allowed[msg.sender][_spender] == 0));
         allowed[msg.sender][_spender] = _value;
         Approval(msg.sender, _spender, _value);
         return true;
@@ -138,7 +139,7 @@ contract Wolk is ERC20Token, Owned {
     address public wolkSale;
     bool    public allSaleCompleted = false;
     bool    public openSaleCompleted = false;
-    modifier isTransferable { assert(allSaleCompleted); _; }
+    modifier isTransferable { require(allSaleCompleted); _; }
     modifier onlyWolk { assert(msg.sender == wolkSale); _; }
 
     // TOKEN GENERATION EVENTLOG
@@ -154,7 +155,7 @@ contract WolkTGE is Wolk {
     mapping (address => uint256) presaleLimit;
     mapping (address => bool) presaleContributor;
     uint256 public constant tokenGenerationMin = 50 * 10**6 * 10**decimals;
-    uint256 public constant tokenGenerationMax = 400 * 10**6 * 10**decimals;
+    uint256 public constant tokenGenerationMax = 200 * 10**6 * 10**decimals;
     uint256 public presale_start_block; 
     uint256 public start_block;
     uint256 public end_block;
@@ -200,32 +201,64 @@ contract WolkTGE is Wolk {
         return true;
     }
 
-    // @dev Token Generation Event for Wolk Protocol Token. TGE Participant send Eth into this func in exchange of Wolk Protocol Token
-    function tokenGenerationEvent(address _participant) payable external {
+    // @param _participant
+    // @return remainingAllocation
+    // @dev return PresaleLimit allocated to given address
+    function participantBalance(address _participant) constant returns (uint256 remainingAllocation) {
+        return presaleLimit[_participant];
+    }
+    
 
+    // @param _participant
+    // @dev use tokenGenerationEvent to handle Pre-sale and Open-sale
+    function tokenGenerationEvent(address _participant) payable external {
         require(!openSaleCompleted && !allSaleCompleted && (block.number <= end_block) && msg.value > 0);
-        
-        if (presaleContributor[_participant] && (block.number < start_block) && (block.number >= presale_start_block)) {
-            //restricted to early participants. Min of 2 eth required
-            require(msg.value >= 2 ether && presaleLimit[_participant] >= msg.value);
-            var isPresale = true;
-        }else{
-            //open to all
-            require(block.number >= start_block) ;            
+        uint256 rate = 1000;  // exchange rate
+        if (presaleContributor[_participant] && (block.number < start_block) && (block.number >= presale_start_block))  {
+            // presale restricted to KYC participants who registered prior to Sept. 10th 
+            require(presaleLimit[_participant] >= msg.value);
+            uint256 DAY1BLOCKEND = 4259500; // end of Sept 12, 2017
+            uint256 DAY2BLOCKEND = 4263000; // end of Sept 13, 2017
+            uint256 DAY3BLOCKEND = 4266500; // end of Sept 14, 2017
+            uint256 DAY4BLOCKEND = 4270000; // end of Sept 15, 2017
+            uint256 DAY5BLOCKEND = 4273500; // end of Sept 16, 2017
+            uint256 DAY6BLOCKEND = 4277000; // end of Sept 17, 2017
+
+            if ( block.number < DAY1BLOCKEND ) {  
+                rate = 1176;
+            } else if ( block.number < DAY2BLOCKEND ) {  
+                rate = 1143;
+            } else if ( block.number < DAY3BLOCKEND ) {  
+                rate = 1111;
+            } else if ( block.number < DAY4BLOCKEND ) {  
+                rate = 1081;
+            } else if ( block.number < DAY5BLOCKEND ) {  
+                rate = 1052;
+            } else if ( block.number < DAY6BLOCKEND ) {  
+                rate = 1023;
+            }else{
+                rate = 1000;
+            }
+            presaleLimit[_participant] = safeSub(presaleLimit[_participant], msg.value);
+        } else {
+            require(block.number >= start_block) ;
         }
 
-        uint256 tokens = safeMul(msg.value, 1000); //exchange rate
+        if ( totalTokens >= tokenGenerationMin ) {
+            rate = 1000;
+        }
+
+        uint256 tokens = safeMul(msg.value, rate);
         uint256 checkedSupply = safeAdd(totalTokens, tokens);
         require(checkedSupply <= tokenGenerationMax);
-        if (isPresale){
-            presaleLimit[_participant] = safeSub(presaleLimit[_participant], msg.value);
-        }
+
         totalTokens = checkedSupply;
         Transfer(address(this), _participant, tokens);
-        balances[_participant] = safeAdd(balances[_participant], tokens);  
-        contribution[_participant] = safeAdd(contribution[_participant], msg.value);  
+        balances[_participant] = safeAdd(balances[_participant], tokens);
+        contribution[_participant] = safeAdd(contribution[_participant], msg.value);
         WolkCreated(_participant, tokens); // logs token creation
     }
+
 
     // @dev If Token Generation Minimum is Not Met, TGE Participants can call this func and request for refund
     function refund() external {
@@ -245,7 +278,7 @@ contract WolkTGE is Wolk {
         require((!openSaleCompleted) && (totalTokens >= tokenGenerationMin));
         openSaleCompleted = true;
         end_block = block.number;
-        reserveBalance = safeDiv(safeMul(this.balance, percentageETHReserve), 100);
+        reserveBalance = safeDiv(safeMul(totalTokens, percentageETHReserve), 100000);
         var withdrawalBalance = safeSub(this.balance, reserveBalance);
         msg.sender.transfer(withdrawalBalance);
     }
@@ -281,7 +314,7 @@ contract WolkProtocol is Wolk {
     mapping (address => mapping (address => bool)) authorized; // holds which accounts have approved which Service Providers
     mapping (address => uint256) feeBasisPoints;   // Fee (in BP) earned by Service Provider when depositing to data seller
     mapping (address => address) feeFormulas;      // Provider's customizable Fee mormula
-    modifier isSettleable { assert(settlementIsRunning); _; }
+    modifier isSettleable { require(settlementIsRunning); _; }
 
 
     // WOLK PROTOCOL Events:
@@ -303,7 +336,7 @@ contract WolkProtocol is Wolk {
     // @return success
     // @dev Set the formula to use for burning -- only Wolk  can set this
     function setBurnFormula(address _newBurnFormula) onlyOwner returns (bool success){
-        uint256 testBurning = EstWolkToBurn(_newBurnFormula, 10 ** 18);
+        uint256 testBurning = estWolkToBurn(_newBurnFormula, 10 ** 18);
         require(testBurning > (5 * 10 ** 13));
         burnFormula = _newBurnFormula;
         return true;
@@ -313,7 +346,7 @@ contract WolkProtocol is Wolk {
     // @return success
     // @dev Set the formula to use for settlement -- settler can customize its fee  
     function setFeeFormula(address _newFeeFormula) onlySettler returns (bool success){
-        uint256 testSettling = EstProviderFee(_newFeeFormula, 10 ** 18);
+        uint256 testSettling = estProviderFee(_newFeeFormula, 10 ** 18);
         require(testSettling > (5 * 10 ** 13));
         feeFormulas[msg.sender] = _newFeeFormula;
         return true;
@@ -362,7 +395,7 @@ contract WolkProtocol is Wolk {
     // @param _value
     // @return wolkBurnt
     // @dev Returns estimate of Wolk to burn 
-    function EstWolkToBurn(address _burnFormula, uint256 _value) constant internal returns (uint256){
+    function estWolkToBurn(address _burnFormula, uint256 _value) constant internal returns (uint256){
         if(_burnFormula != 0x0){
             uint256 wolkBurnt = IBurnFormula(_burnFormula).calculateWolkToBurn(_value);
             return wolkBurnt;    
@@ -375,7 +408,7 @@ contract WolkProtocol is Wolk {
     // @param _serviceProvider
     // @return estFee
     // @dev Returns estimate of Service Provider's fee 
-    function EstProviderFee(address _serviceProvider, uint256 _value) constant internal returns (uint256){
+    function estProviderFee(address _serviceProvider, uint256 _value) constant internal returns (uint256){
         address ProviderFeeFormula = feeFormulas[_serviceProvider];
         if (ProviderFeeFormula != 0x0){
             uint256 estFee = IFeeFormula(ProviderFeeFormula).calculateProviderFee(_value);
@@ -392,7 +425,7 @@ contract WolkProtocol is Wolk {
     function settleBuyer(address _buyer, uint256 _value) onlySettler isSettleable returns (bool success) {
         require((burnBasisPoints > 0) && (burnBasisPoints <= 1000) && authorized[_buyer][msg.sender]); // Buyer must authorize Service Provider 
         require(balances[_buyer] >= _value && _value > 0);
-        var WolkToBurn = EstWolkToBurn(burnFormula, _value);
+        var WolkToBurn = estWolkToBurn(burnFormula, _value);
         var burnCap = safeDiv(safeMul(_value, burnBasisPoints), 10000); //can not burn more than this
 
         // If burn formula not found, use default burn rate. If Est to burn exceeds BurnCap, cut back to the cap
@@ -417,7 +450,7 @@ contract WolkProtocol is Wolk {
         // Service Providers have a % max fee (e.g. 20%)
         var serviceProviderBP = feeBasisPoints[msg.sender];
         require((serviceProviderBP > 0) && (serviceProviderBP <= 4000) && (_value > 0));
-        var seviceFee = EstProviderFee(msg.sender, _value);
+        var seviceFee = estProviderFee(msg.sender, _value);
         var Maximumfee = safeDiv(safeMul(_value, serviceProviderBP), 10000);
         
         // If provider's fee formula not set, use default burn rate. If Est fee exceeds Maximumfee, cut back to the fee
@@ -496,7 +529,7 @@ contract WolkExchange is WolkProtocol, WolkTGE {
     uint256 public maxPerExchangeBP = 50;
     address public exchangeFormula;
     bool    public exchangeIsRunning = false;
-    modifier isExchangable { assert(exchangeIsRunning && allSaleCompleted); _; }
+    modifier isExchangable { require(exchangeIsRunning && allSaleCompleted); _; }
     
     // @param  _newExchangeformula
     // @return success
@@ -532,7 +565,7 @@ contract WolkExchange is WolkProtocol, WolkTGE {
 
     // @return Estimated Liquidation Cap
     // @dev Liquidation Cap per transaction is used to ensure proper price discovery for Wolk Exchange 
-    function EstLiquidationCap() public constant returns (uint256) {
+    function estLiquidationCap() public constant returns (uint256) {
         if (openSaleCompleted){
             var liquidationMax  = safeDiv(safeMul(totalTokens, maxPerExchangeBP), 10000);
             if (liquidationMax < 100 * 10**decimals){ 
@@ -558,7 +591,7 @@ contract WolkExchange is WolkProtocol, WolkTGE {
     // @return ethReceivable
     // @dev send Wolk into contract in exchange for eth, at an exchange rate based on the Bancor Protocol derivation and decrease totalSupply accordingly
     function sellWolk(uint256 _wolkAmount) isExchangable() returns(uint256) {
-        uint256 sellCap = EstLiquidationCap();
+        uint256 sellCap = estLiquidationCap();
         require((balances[msg.sender] >= _wolkAmount));
         require(sellCap >= _wolkAmount);
         balances[msg.sender] = safeSub(balances[msg.sender], _wolkAmount);
@@ -587,12 +620,12 @@ contract WolkExchange is WolkProtocol, WolkTGE {
     }
 
     // @dev  fallback function for purchase
-    // @note Automatically fallback to tokenGenerationEvent before sale is completed. After the event, A 6000 blocks buffer is enforced. Then fallback to purchaseWolk  
+    // @note Automatically fallback to tokenGenerationEvent before sale is completed. After the token generation event, fallback to purchaseWolk. Liquidity exchange will be enabled through updateExchangeStatus  
     function () payable {
         require(msg.value > 0);
         if(!openSaleCompleted){
             this.tokenGenerationEvent.value(msg.value)(msg.sender);
-        }else if (block.number >= (end_block + 6000)){
+        }else if (block.number >= end_block){
             this.purchaseWolk.value(msg.value)(msg.sender);
         }else{
             revert();
