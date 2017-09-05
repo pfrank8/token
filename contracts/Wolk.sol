@@ -55,7 +55,7 @@ contract Owned {
 
 // ERC20 Interface
 contract ERC20 {
-    function totalSupply() constant returns (uint totalSupply);
+    function totalSupply() constant returns (uint _totalSupply);
     function balanceOf(address _owner) constant returns (uint balance);
     function transfer(address _to, uint _value) returns (bool success);
     function transferFrom(address _from, address _to, uint _value) returns (bool success);
@@ -225,7 +225,7 @@ contract WolkTGE is Wolk {
             uint256 DAY6BLOCKEND = 4277000; // end of Sept 17, 2017
 
             if ( block.number < DAY1BLOCKEND ) {  
-                rate = 1176;
+                rate = 1177;
             } else if ( block.number < DAY2BLOCKEND ) {  
                 rate = 1143;
             } else if ( block.number < DAY3BLOCKEND ) {  
@@ -233,9 +233,9 @@ contract WolkTGE is Wolk {
             } else if ( block.number < DAY4BLOCKEND ) {  
                 rate = 1081;
             } else if ( block.number < DAY5BLOCKEND ) {  
-                rate = 1052;
+                rate = 1053;
             } else if ( block.number < DAY6BLOCKEND ) {  
-                rate = 1023;
+                rate = 1026;
             }else{
                 rate = 1000;
             }
@@ -286,7 +286,7 @@ contract WolkTGE is Wolk {
     // @dev Finalizing the Private-Sale. Entire Eth will be kept in contract to provide liquidity. This func will conclude the entire sale.
     function finalize() onlyWolk payable external {
         require((openSaleCompleted) && (!allSaleCompleted));                                                                                                    
-        uint256 privateSaleTokens =  safeMul(safeDiv(msg.value, percentageETHReserve), 100000);
+        uint256 privateSaleTokens =  safeDiv(safeMul(msg.value, 100000), percentageETHReserve);
         uint256 checkedSupply = safeAdd(totalTokens, privateSaleTokens);                                                                                                
         totalTokens = checkedSupply;                                                                                                                         
         reserveBalance = safeAdd(reserveBalance, msg.value);                                                                                                 
