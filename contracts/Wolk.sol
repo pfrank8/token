@@ -212,40 +212,45 @@ contract WolkTGE is Wolk {
     // @param _participant
     // @dev use tokenGenerationEvent to handle Pre-sale and Open-sale
     function tokenGenerationEvent(address _participant) payable external {
-        require(!openSaleCompleted && !allSaleCompleted && (block.number <= end_block) && msg.value > 0);
-        uint256 rate = 1000;  // exchange rate
-        if (presaleContributor[_participant] && (block.number < start_block) && (block.number >= presale_start_block))  {
-            // presale restricted to KYC participants who registered prior to Sept. 10th 
-            require(presaleLimit[_participant] >= msg.value);
-            uint256 DAY1BLOCKEND = 4259500; // end of Sept 12, 2017
-            uint256 DAY2BLOCKEND = 4263000; // end of Sept 13, 2017
-            uint256 DAY3BLOCKEND = 4266500; // end of Sept 14, 2017
-            uint256 DAY4BLOCKEND = 4270000; // end of Sept 15, 2017
-            uint256 DAY5BLOCKEND = 4273500; // end of Sept 16, 2017
-            uint256 DAY6BLOCKEND = 4277000; // end of Sept 17, 2017
+        require( presaleContributor[_participant] && !openSaleCompleted && !allSaleCompleted && (block.number <= end_block) && msg.value > 0);
 
-            if ( block.number < DAY1BLOCKEND ) {  
-                rate = 1177;
-            } else if ( block.number < DAY2BLOCKEND ) {  
-                rate = 1143;
-            } else if ( block.number < DAY3BLOCKEND ) {  
-                rate = 1111;
-            } else if ( block.number < DAY4BLOCKEND ) {  
-                rate = 1081;
-            } else if ( block.number < DAY5BLOCKEND ) {  
-                rate = 1053;
-            } else if ( block.number < DAY6BLOCKEND ) {  
-                rate = 1026;
-            }else{
-                rate = 1000;
-            }
+        /* Early Participation Discount (rounded to the nearest integer)
+        ---------------------------------
+        | Token Issued | Rate | Discount|
+        ---------------------------------
+        |   0  -  50MM | 1177 |  15.0%  |
+        | 50MM -  60MM | 1143 |  12.5%  |
+        | 60MM -  70MM | 1111 |  10.0%  |
+        | 70MM -  80MM | 1081 |   7.5%  |
+        | 80MM -  90MM | 1053 |   5.0%  |         
+        | 90MM - 100MM | 1026 |   2.5%  |
+        |    100MM+    | 1000 |   0.0%  |
+        ---------------------------------
+        */
+
+        uint256 rate = 1000;  // Default Rate
+
+        if ( totalTokens < (50 * 10**6 * 10**decimals) ) {  
+            rate = 1177;
+        } else if ( totalTokens < (60 * 10**6 * 10**decimals) ) {  
+            rate = 1143;
+        } else if ( totalTokens < (70 * 10**6 * 10**decimals) ) {  
+            rate = 1111;
+        } else if ( totalTokens < (80 * 10**6 * 10**decimals) ) {  
+            rate = 1081;
+        } else if ( totalTokens < (90 * 10**6 * 10**decimals) ) {  
+            rate = 1053;
+        } else if ( totalTokens < (100 * 10**6 * 10**decimals) ) {  
+            rate = 1026;
+        }else{
+            rate = 1000;
+        }
+
+        if ((block.number < start_block) && (block.number >= presale_start_block))  { 
+            require(presaleLimit[_participant] >= msg.value);
             presaleLimit[_participant] = safeSub(presaleLimit[_participant], msg.value);
         } else {
             require(block.number >= start_block) ;
-        }
-
-        if ( totalTokens >= tokenGenerationMin ) {
-            rate = 1000;
         }
 
         uint256 tokens = safeMul(msg.value, rate);
