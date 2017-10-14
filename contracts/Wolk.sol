@@ -115,6 +115,7 @@ contract ERC20Token is ERC20, SafeMath {
     function allowance(address _owner, address _spender) constant returns (uint256 remaining) {
         return allowed[_owner][_spender];
     }
+
 }
 
 contract Wolk is ERC20Token, Owned {
@@ -148,24 +149,32 @@ contract WolkTGE is Wolk {
     mapping (address => uint256) contribution;
     mapping (address => bool) whitelistContributor;
     
-    uint256 public constant tokenGenerationMin = 1 * 10**decimals;
+    uint256 public constant tokenGenerationMin =   1 * 10**4 * 10**decimals;
     uint256 public constant tokenGenerationMax = 175 * 10**5 * 10**decimals;
     uint256 public start_block;
-    uint256 public end_block;
+    uint256 public end_time;
+    bool    kycRequirement = true;
 
     // @param _startBlock
-    // @param _endBlock
+    // @param _endTime
     // @param _wolkin - wolk inc tokens sent here
     // @return success
     // @dev Wolk Genesis Event [only accessible by Contract Owner]
-    function wolkGenesis(uint256 _startBlock, uint256 _endBlock, address _wolkinc) onlyOwner returns (bool success){
-        require((totalTokens < 1) && (block.number <= _startBlock) && (_endBlock > _startBlock));
+    function wolkGenesis(uint256 _startBlock, uint256 _endTime, address _wolkinc) onlyOwner returns (bool success){
+        require((totalTokens < 1) && (block.number <= _startBlock)); 
         start_block = _startBlock;
-        end_block = _endBlock;
+        end_time = _endTime;
         wolkInc = _wolkinc;
         return true;
     }
-
+    
+    // @param _participants
+    // @return success
+    function updateRequireKYC(bool _kycRequirement) onlyOwner returns (bool success) {
+    	     kycRequirement = _kycRequirement;
+	     return true;
+    } 
+    
     // @param _participants
     // @return success
     function addParticipant(address[] _participants) onlyOwner returns (bool success) {
@@ -195,13 +204,12 @@ contract WolkTGE is Wolk {
     // @param _participant
     // @dev use tokenGenerationEvent to handle sale of WOLK
     function tokenGenerationEvent(address _participant) payable external {
-        require( ( whitelistContributor[_participant] || whitelistContributor[msg.sender] || balances[_participant] > 0 )  && !allSaleCompleted && (block.number <= end_block) && msg.value > 0);
-
-	 
+        require( ( whitelistContributor[_participant] || whitelistContributor[msg.sender] || balances[_participant] > 0 || kycRequirement )  && !allSaleCompleted && ( block.timestamp <= end_time ) && msg.value > 0);
+	
         uint256 rate = 1000;  // Default Rate
-	    rate = safeDiv( 20 * 10**6 * 10**decimals, safeAdd( 10 * 10**3 * 10**decimals, safeDiv( totalTokens, 2 * 10**3 * 10**decimals)) );
+	    rate = safeDiv( 175 * 10**5 * 10**decimals, safeAdd( 875 * 10**1 * 10**decimals, safeDiv( totalTokens, 2 * 10**3 * 10**decimals)) );
 	    if ( rate > 2000 ) rate = 2000;
-	    if ( rate < 1000 ) rate = 1000;
+	    if ( rate < 500 ) rate = 500;
 	    require(block.number >= start_block) ;
 
         uint256 tokens = safeMul(msg.value, rate);
@@ -220,7 +228,7 @@ contract WolkTGE is Wolk {
     // @dev Finalize.  Entire Eth will be kept in contract to provide liquidity. This func will conclude the entire sale.
     function finalize() onlyOwner external {
         require(!allSaleCompleted);
-        end_block = block.number;
+        end_time = block.timestamp;
 
     	// 50MM Wolk allocated to Wolk Inc for development
         uint256 wolkincTokens =  50 * 10**6 * 10**decimals;
@@ -235,7 +243,7 @@ contract WolkTGE is Wolk {
     }
 
     function refund() external {
-        require((contribution[msg.sender] > 0) && (!allSaleCompleted) && (block.number > end_block)  && (totalTokens < tokenGenerationMin));
+        require((contribution[msg.sender] > 0) && (!allSaleCompleted) && (block.timestamp > end_time)  && (totalTokens < tokenGenerationMin));
         uint256 tokenBalance = balances[msg.sender];
         uint256 refundBalance = contribution[msg.sender];
         balances[msg.sender] = 0;
@@ -246,6 +254,9 @@ contract WolkTGE is Wolk {
         msg.sender.transfer(refundBalance); 
     }
 
+    function transferAnyERC20Token(address _tokenAddress, uint256 _amount) onlyOwner returns (bool success) {
+        return ERC20(_tokenAddress).transfer(owner, _amount);
+    }
 }
 
 // Taken from https://github.com/bancorprotocol/contracts/blob/master/solidity/contracts/BancorFormula.sol
@@ -356,7 +367,7 @@ contract WolkExchange is  WolkTGE {
         require(msg.value > 0);
         if(!allSaleCompleted){
             this.tokenGenerationEvent.value(msg.value)(msg.sender);
-        } else if (block.number >= end_block){
+        } else if ( block.timestamp >= end_time ){
             this.purchaseWolk.value(msg.value)(msg.sender);
         } else {
             revert();
