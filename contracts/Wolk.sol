@@ -207,10 +207,10 @@ contract WolkTGE is Wolk {
         require( ( whitelistContributor[_participant] || whitelistContributor[msg.sender] || balances[_participant] > 0 || kycRequirement )  && !allSaleCompleted && ( block.timestamp <= end_time ) && msg.value > 0);
 	
         uint256 rate = 1000;  // Default Rate
-	    rate = safeDiv( 175 * 10**5 * 10**decimals, safeAdd( 875 * 10**1 * 10**decimals, safeDiv( totalTokens, 2 * 10**3 * 10**decimals)) );
-	    if ( rate > 2000 ) rate = 2000;
-	    if ( rate < 500 ) rate = 500;
-	    require(block.number >= start_block) ;
+	rate = safeDiv( 175 * 10**5 * 10**decimals, safeAdd( 875 * 10**1 * 10**decimals, safeDiv( totalTokens, 2 * 10**3)) );
+	if ( rate > 2000 ) rate = 2000;
+	if ( rate < 500 ) rate = 500;
+	require(block.number >= start_block) ;
 
         uint256 tokens = safeMul(msg.value, rate);
         uint256 checkedSupply = safeAdd(totalTokens, tokens);
