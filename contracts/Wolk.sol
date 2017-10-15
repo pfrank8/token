@@ -157,7 +157,7 @@ contract WolkTGE is Wolk {
 
     // @param _startBlock
     // @param _endTime
-    // @param _wolkin - wolk inc tokens sent here
+    // @param _wolkinc - wolk inc tokens sent here
     // @return success
     // @dev Wolk Genesis Event [only accessible by Contract Owner]
     function wolkGenesis(uint256 _startBlock, uint256 _endTime, address _wolkinc) onlyOwner returns (bool success){
@@ -171,8 +171,8 @@ contract WolkTGE is Wolk {
     // @param _participants
     // @return success
     function updateRequireKYC(bool _kycRequirement) onlyOwner returns (bool success) {
-    	     kycRequirement = _kycRequirement;
-	     return true;
+        kycRequirement = _kycRequirement;
+        return true;
     } 
     
     // @param _participants
@@ -205,12 +205,12 @@ contract WolkTGE is Wolk {
     // @dev use tokenGenerationEvent to handle sale of WOLK
     function tokenGenerationEvent(address _participant) payable external {
         require( ( whitelistContributor[_participant] || whitelistContributor[msg.sender] || balances[_participant] > 0 || kycRequirement )  && !allSaleCompleted && ( block.timestamp <= end_time ) && msg.value > 0);
-	
+    
         uint256 rate = 1000;  // Default Rate
-	rate = safeDiv( 175 * 10**5 * 10**decimals, safeAdd( 875 * 10**1 * 10**decimals, safeDiv( totalTokens, 2 * 10**3)) );
-	if ( rate > 2000 ) rate = 2000;
-	if ( rate < 500 ) rate = 500;
-	require(block.number >= start_block) ;
+        rate = safeDiv( 175 * 10**5 * 10**decimals, safeAdd( 875 * 10**1 * 10**decimals, safeDiv( totalTokens, 2 * 10**3)) );
+        if ( rate > 2000 ) rate = 2000;
+        if ( rate < 500 ) rate = 500;
+        require(block.number >= start_block) ;
 
         uint256 tokens = safeMul(msg.value, rate);
         uint256 checkedSupply = safeAdd(totalTokens, tokens);
@@ -225,14 +225,13 @@ contract WolkTGE is Wolk {
         WolkCreated(_participant, tokens); // logs token creation
     }
 
-    // @dev Finalize.  Entire Eth will be kept in contract to provide liquidity. This func will conclude the entire sale.
     function finalize() onlyOwner external {
         require(!allSaleCompleted);
         end_time = block.timestamp;
 
-    	// 50MM Wolk allocated to Wolk Inc for development
+        // 50MM Wolk allocated to Wolk Inc for development
         uint256 wolkincTokens =  50 * 10**6 * 10**decimals;
-	balances[wolkInc] = wolkincTokens;
+        balances[wolkInc] = wolkincTokens;
         totalTokens = safeAdd(totalTokens, wolkincTokens);                 
 
         WolkCreated(wolkInc, wolkincTokens); // logs token creation 
@@ -279,8 +278,8 @@ contract WolkExchange is  WolkTGE {
     function setExchangeFormula(address _newExchangeformula) onlyOwner returns (bool success){
         require(sellWolkEstimate(10**decimals, _newExchangeformula) > 0);
         require(purchaseWolkEstimate(10**decimals, _newExchangeformula) > 0);
-	    isPurchasePossible = false;
-	    isSellPossible = false;
+        isPurchasePossible = false;
+        isSellPossible = false;
         exchangeFormula = _newExchangeformula;
         return true;
     }
@@ -290,7 +289,7 @@ contract WolkExchange is  WolkTGE {
     // @dev Set the reserve ratio in case of emergency -- only Wolk Inc can set this
     function updateReserveRatio(uint8 _newReserveRatio) onlyOwner returns (bool success) {
         require(allSaleCompleted && ( _newReserveRatio > 1 ) && ( _newReserveRatio < 20 ) );
-	    percentageETHReserve = _newReserveRatio;
+        percentageETHReserve = _newReserveRatio;
         return true;
     }
 
@@ -302,7 +301,7 @@ contract WolkExchange is  WolkTGE {
             require(sellWolkEstimate(10**decimals, exchangeFormula) > 0);
             require(purchaseWolkEstimate(10**decimals, exchangeFormula) > 0);   
         }
-	    isPurchasePossible = _isRunning;
+        isPurchasePossible = _isRunning;
         return true;
     }
 
@@ -314,7 +313,7 @@ contract WolkExchange is  WolkTGE {
             require(sellWolkEstimate(10**decimals, exchangeFormula) > 0);
             require(purchaseWolkEstimate(10**decimals, exchangeFormula) > 0);   
         }
-	    isSellPossible = _isRunning;
+        isSellPossible = _isRunning;
         return true;
     }
 
